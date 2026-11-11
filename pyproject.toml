@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ghost-feature-hunter"
+version = "0.1.0"
+description = "Evidence-backed verification of software feature journeys"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Ghost Feature Hunter contributors" }]
+keywords = ["testing", "verification", "observability", "security"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Testing",
+]
+dependencies = [
+  "httpx>=0.27,<1",
+  "pydantic>=2.7,<3",
+  "typer>=0.12,<1",
+]
+
+[project.optional-dependencies]
+browser = ["playwright>=1.45,<2"]
+demo = ["flask>=3.0,<4"]
+dev = ["build>=1.2,<2", "jsonschema>=4.22,<5", "pytest>=8.0,<10"]
+all = ["playwright>=1.45,<2", "flask>=3.0,<4"]
+
+[project.scripts]
+ghost-hunter = "ghost_hunter.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ghost_hunter"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+  "integration: exercises a local app or optional runtime",
+  "benchmark: scores the demo defects",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

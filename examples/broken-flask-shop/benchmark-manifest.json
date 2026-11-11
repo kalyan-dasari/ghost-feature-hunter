@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "description": "Scoring labels for deliberately injected demo defects. The engine does not read this file.",
+  "control_checkpoint_ids": ["draft-create", "duplicate-order-first", "inventory-purchase", "partial-tx-request"],
+  "control_checkpoint_ids": ["draft-create", "duplicate-order-first", "inventory-purchase", "partial-tx-request"],
+  "defects": [
+    {"id": "cart-double-tax", "description": "Cart total applies the tax twice.", "checkpoint_ids": ["cart-total"]},
+    {"id": "draft-not-persisted", "description": "Draft endpoint says saved without inserting a row.", "checkpoint_ids": ["draft-persistence"]},
+    {"id": "duplicate-order", "description": "Checkout accepts the same idempotency key repeatedly.", "checkpoint_ids": ["duplicate-order"]},
+    {"id": "quantity-validation", "description": "Checkout accepts negative and zero quantities.", "checkpoint_ids": ["quantity-validation"]},
+    {"id": "payment-failure", "description": "Failed payment is recorded as paid and confirmed.", "checkpoint_ids": ["payment-failure"]},
+    {"id": "missing-authentication", "description": "Order listing is available without authentication.", "checkpoint_ids": ["authentication-required"]},
+    {"id": "order-ownership", "description": "Order lookup ignores the caller's ownership.", "checkpoint_ids": ["order-ownership"]},
+    {"id": "state-transition", "description": "Order state endpoint accepts invalid transitions.", "checkpoint_ids": ["state-transition"]},
+    {"id": "required-fields", "description": "Checkout accepts missing email and address fields.", "checkpoint_ids": ["required-fields"]},
+    {"id": "notification-missing", "description": "Checkout does not persist a notification.", "checkpoint_ids": ["notification-delivery"]},
+    {"id": "empty-cart", "description": "Checkout accepts an empty cart.", "checkpoint_ids": ["empty-cart"]},
+    {"id": "inventory-reduction", "description": "Stock decreases by one rather than by quantity.", "checkpoint_ids": ["inventory-reduction"]},
+    {"id": "partial-transaction", "description": "Order remains committed when a later inventory operation fails.", "checkpoint_ids": ["partial-transaction"]},
+    {"id": "error-handling", "description": "Checkout converts exceptions into success responses with debug detail.", "checkpoint_ids": ["error-handling"]},
+    {"id": "stale-frontend-state", "description": "Frontend ignores the returned order id and retains stale state.", "checkpoint_ids": ["stale-order-state"]}
+  ]
+}

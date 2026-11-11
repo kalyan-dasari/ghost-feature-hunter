@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghost-feature-hunter.dev/schemas/report.schema.json",
+  "title": "Ghost Feature Hunter report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tool_version", "project_path", "generated_at", "results", "summary", "limitations"],
+          "properties": {
+    "schema_version": {"type": "string"},
+    "tool_version": {"type": "string"},
+    "project_path": {"type": "string"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["feature", "checkpoint_id", "checkpoint", "expected_behavior", "actual_observation", "status", "evidence", "timestamp", "reproducibility", "confidence_rationale", "duration_ms"],
+        "properties": {
+          "feature": {"type": "string"},
+          "checkpoint_id": {"type": "string"},
+          "checkpoint": {"type": "string"},
+          "expected_behavior": {"type": "string"},
+          "actual_observation": {"type": "string"},
+          "status": {"enum": ["PASS", "FAIL", "UNKNOWN"]},
+          "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
+          "timestamp": {"type": "string", "format": "date-time"},
+          "reproducibility": {"type": "string"},
+          "confidence_rationale": {"type": "string"},
+          "duration_ms": {"type": "integer", "minimum": 0}
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"status": {"enum": ["PASS", "FAIL"]}}, "required": ["status"]},
+            "then": {"properties": {"evidence": {"minItems": 1}}}
+          }
+        ]
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "pass_count", "fail_count", "unknown_count"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "pass_count": {"type": "integer", "minimum": 0},
+        "fail_count": {"type": "integer", "minimum": 0},
+        "unknown_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference", "observed_at", "summary", "details"],
+      "properties": {
+        "reference": {"type": "string"},
+        "observed_at": {"type": "string", "format": "date-time"},
+        "summary": {"type": "string"},
+        "details": {"type": "object"}
+      }
+    }
+  }
+}

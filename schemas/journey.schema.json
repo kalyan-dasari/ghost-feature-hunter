@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghost-feature-hunter.dev/schemas/journey.schema.json",
+  "title": "Ghost Feature Hunter journey",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["feature", "steps"],
+  "properties": {
+    "schema_version": {"type": "string", "default": "1.0"},
+    "feature": {"type": "string", "minLength": 1},
+    "description": {"type": "string"},
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "checkpoint", "adapter", "expected_behavior"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]*$"},
+          "checkpoint": {"type": "string", "minLength": 1},
+          "adapter": {"enum": ["http", "database", "browser"]},
+          "expected_behavior": {"type": "string", "minLength": 1},
+          "settings": {"type": "object"}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+# Adapter reference
+
+Journeys are JSON. Each step names one adapter, states expected behavior, and provides explicit machine-checkable assertions. Unsupported assertions produce UNKNOWN; they are never silently ignored.
+
+## HTTP
+
+Settings: `method` (default GET), `url`, optional `headers`, `headers_env`, `params`, `json`, `timeout_seconds`, and `checks`. Checks support `status_code`, `json_equals` keyed by a dotted/list-index path, `json_exists`, and `text_contains`. Responses larger than 2 MB produce UNKNOWN. Request and response payloads are not copied wholesale into evidence. Write methods need both project and CLI approval.
+
+## Database
+
+Uses Python's standard-library SQLite driver; no ORM dependency is needed. A file-backed SQLite URL is supplied through `database_url_env` in config or a step. `query` must be one SELECT without comments or semicolons, complete within the configured query limit, and return at most 1,000 rows. `checks` supports `row_count_equals`, `row_count_at_least`, and `first_row_equals`. Use bound parameters via `parameters`; query results and database paths are not disclosed in evidence.
+
+## Browser
+
+Requires Playwright and its Chromium binary, plus `base_url`. `actions` supports `goto`, `click`, `fill`, `expect_visible`, `expect_text`, `expect_url_contains`, and `wait_for_network_idle`. Each step needs an explicit page or response assertion. Browser requests are restricted to the configured origin, and mutating HTTP methods require both write approvals. The adapter does not record screenshots. Page scripts still execute, so browser checks are not a sandbox.
+
+## Deferred after v0.1
+
+Test-suite execution needs a dedicated isolation design; a zero exit code alone can be misleading when no tests ran. A log phrase can be stale and does not establish a current runtime outcome. Neither adapter contributes to v0.1 verification status.

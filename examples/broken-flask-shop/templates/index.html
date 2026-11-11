@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Broken Trail Shop</title>
+    <script defer src="/static/shop.js"></script>
+    <style>
+      body { font: 16px system-ui, sans-serif; max-width: 42rem; margin: 3rem auto; padding: 0 1rem; }
+      button { padding: .7rem 1rem; cursor: pointer; }
+      .card { border: 1px solid #bbb; border-radius: .5rem; padding: 1rem; }
+      #order-state { margin-top: 1rem; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <h1>Broken Trail Shop</h1>
+    <p>Trail Socks — $5.00</p>
+    <section class="card" aria-label="Checkout">
+      <label for="email">Email</label>
+      <input id="email" type="email" value="shopper@example.test">
+      <button id="checkout-button" type="button">Place order</button>
+      <p id="order-state" aria-live="polite">Awaiting checkout</p>
+    </section>
+  </body>
+</html>

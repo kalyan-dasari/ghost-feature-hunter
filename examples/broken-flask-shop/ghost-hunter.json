@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "environment": "test",
+  "base_url": "http://127.0.0.1:5000",
+  "allowed_hosts": [],
+  "timeout_seconds": 10,
+  "allow_writes": false,
+  "production_approved": false,
+  "report_dir": "ghost-reports",
+  "database_url_env": "GHOST_SHOP_DATABASE_URL"
+}

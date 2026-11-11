@@ -1,0 +1,234 @@
+{
+  "schema_version": "1.0",
+  "feature": "checkout",
+  "description": "A deliberately explicit journey through the demo shop. Synthetic test data only.",
+  "steps": [
+    {
+      "id": "cart-total",
+      "checkpoint": "Cart calculates one tax amount",
+      "adapter": "http",
+      "expected_behavior": "Two Trail Socks at 500 cents each plus one 10% tax produce 1100 cents",
+      "settings": {
+        "method": "POST",
+        "url": "/api/cart/calculate",
+        "json": {"items": [{"product_id": 1, "quantity": 2}]},
+        "checks": {"status_code": 200, "json_equals": {"total_cents": 1100}}
+      }
+    },
+    {
+      "id": "draft-create",
+      "checkpoint": "Draft endpoint acknowledges the request",
+      "adapter": "http",
+      "expected_behavior": "Draft creation returns HTTP 201",
+      "settings": {
+        "method": "POST",
+        "url": "/api/drafts",
+        "json": {"title": "Test draft"},
+        "checks": {"status_code": 201}
+      }
+    },
+    {
+      "id": "draft-persistence",
+      "checkpoint": "Acknowledged draft exists in storage",
+      "adapter": "database",
+      "expected_behavior": "One draft row was persisted",
+      "settings": {
+        "database_url_env": "GHOST_SHOP_DATABASE_URL",
+        "query": "SELECT COUNT(*) AS count FROM drafts WHERE id LIKE 'draft-%'",
+        "checks": {"first_row_equals": {"count": 1}}
+      }
+    },
+    {
+      "id": "duplicate-order-first",
+      "checkpoint": "First idempotent checkout is accepted",
+      "adapter": "http",
+      "expected_behavior": "First request with an idempotency key returns HTTP 201",
+      "settings": {
+        "method": "POST",
+        "url": "/api/checkout",
+        "headers": {"Idempotency-Key": "benchmark-duplicate"},
+        "json": {"user_id": "duplicate-case", "email": "buyer@example.test", "items": [{"product_id": 1, "quantity": 1}]},
+        "checks": {"status_code": 201}
+      }
+    },
+    {
+      "id": "duplicate-order",
+      "checkpoint": "Repeated idempotent checkout is rejected",
+      "adapter": "http",
+      "expected_behavior": "A second request with the same idempotency key returns HTTP 409",
+      "settings": {
+        "method": "POST",
+        "url": "/api/checkout",
+        "headers": {"Idempotency-Key": "benchmark-duplicate"},
+        "json": {"user_id": "duplicate-case", "email": "buyer@example.test", "items": [{"product_id": 1, "quantity": 1}]},
+        "checks": {"status_code": 409}
+      }
+    },
+    {
+      "id": "quantity-validation",
+      "checkpoint": "Negative quantity is rejected",
+      "adapter": "http",
+      "expected_behavior": "Checkout with quantity -1 returns HTTP 400",
+      "settings": {
+        "method": "POST",
+        "url": "/api/checkout",
+        "json": {"user_id": "quantity-case", "email": "buyer@example.test", "items": [{"product_id": 1, "quantity": -1}]},
+        "checks": {"status_code": 400}
+      }
+    },
+    {
+      "id": "payment-failure",
+      "checkpoint": "Failed payment cannot produce a confirmed order",
+      "adapter": "http",
+      "expected_behavior": "A simulated failed payment returns HTTP 402",
+      "settings": {
+        "method": "POST",
+        "url": "/api/checkout",
+        "json": {"user_id": "payment-case", "email": "buyer@example.test", "payment_result": "failed", "items": [{"product_id": 1, "quantity": 1}]},
+        "checks": {"status_code": 402}
+      }
+    },
+    {
+      "id": "authentication-required",
+      "checkpoint": "Order list requires an authenticated caller",
+      "adapter": "http",
+      "expected_behavior": "Unauthenticated order listing returns HTTP 401",
+      "settings": {
+        "method": "GET",
+        "url": "/api/orders?user_id=alice",
+        "checks": {"status_code": 401}
+      }
+    },
+    {
+      "id": "order-ownership",
+      "checkpoint": "A different user cannot read Alice's order",
+      "adapter": "http",
+      "expected_behavior": "Requesting Alice's order as Mallory returns HTTP 404",
+      "settings": {
+        "method": "GET",
+        "url": "/api/orders/seed-order-alice?user_id=mallory",
+        "checks": {"status_code": 404}
+      }
+    },
+    {
+      "id": "state-transition",
+      "checkpoint": "Unknown order state is rejected",
+      "adapter": "http",
+      "expected_behavior": "Changing an order to an unsupported state returns HTTP 400",
+      "settings": {
+        "method": "PATCH",
+        "url": "/api/orders/seed-order-alice/state",
+        "json": {"state": "teleported"},
+        "checks": {"status_code": 400}
+      }
+    },
+    {
+      "id": "required-fields",
+      "checkpoint": "Checkout requires email and delivery address",
+      "adapter": "http",
+      "expected_behavior": "Checkout with required fields missing returns HTTP 400",
+      "settings": {
+        "method": "POST",
+        "url": "/api/checkout",
+        "json": {"user_id": "required-fields-case", "items": [{"product_id": 1, "quantity": 1}]},
+        "checks": {"status_code": 400}
+      }
+    },
+    {
+      "id": "notification-delivery",
+      "checkpoint": "Persisted order has a delivery notification",
+      "adapter": "database",
+      "expected_behavior": "At least one notification exists for the seeded order",
+      "settings": {
+        "database_url_env": "GHOST_SHOP_DATABASE_URL",
+        "query": "SELECT id FROM notifications WHERE order_id = 'seed-order-alice'",
+        "checks": {"row_count_at_least": 1}
+      }
+    },
+    {
+      "id": "empty-cart",
+      "checkpoint": "Empty cart cannot be checked out",
+      "adapter": "http",
+      "expected_behavior": "Checkout with an empty cart returns HTTP 400",
+      "settings": {
+        "method": "POST",
+        "url": "/api/checkout",
+        "json": {"user_id": "empty-case", "email": "buyer@example.test", "items": []},
+        "checks": {"status_code": 400}
+      }
+    },
+    {
+      "id": "inventory-purchase",
+      "checkpoint": "Four Day Packs can be ordered",
+      "adapter": "http",
+      "expected_behavior": "Checkout accepts the valid Day Pack request",
+      "settings": {
+        "method": "POST",
+        "url": "/api/checkout",
+        "json": {"user_id": "inventory-case", "email": "buyer@example.test", "items": [{"product_id": 2, "quantity": 4}]},
+        "checks": {"status_code": 201}
+      }
+    },
+    {
+      "id": "inventory-reduction",
+      "checkpoint": "Inventory decreases by the ordered quantity",
+      "adapter": "database",
+      "expected_behavior": "Stock decreases from 20 to 16 after ordering four Day Packs",
+      "settings": {
+        "database_url_env": "GHOST_SHOP_DATABASE_URL",
+        "query": "SELECT stock FROM products WHERE id = 2",
+        "checks": {"first_row_equals": {"stock": 16}}
+      }
+    },
+    {
+      "id": "partial-tx-request",
+      "checkpoint": "Checkout reports the simulated stock operation",
+      "adapter": "http",
+      "expected_behavior": "Request is accepted by the benchmark fixture",
+      "settings": {
+        "method": "POST",
+        "url": "/api/checkout",
+        "json": {"user_id": "partial-case", "email": "buyer@example.test", "items": [{"product_id": 1, "quantity": 1}], "simulate_inventory_error": true},
+        "checks": {"status_code": 200}
+      }
+    },
+    {
+      "id": "partial-transaction",
+      "checkpoint": "Failed inventory update rolls back the order",
+      "adapter": "database",
+      "expected_behavior": "No order remains for the failed partial-case checkout",
+      "settings": {
+        "database_url_env": "GHOST_SHOP_DATABASE_URL",
+        "query": "SELECT id FROM orders WHERE user_id = :user_id",
+        "parameters": {"user_id": "partial-case"},
+        "checks": {"row_count_equals": 0}
+      }
+    },
+    {
+      "id": "error-handling",
+      "checkpoint": "Malformed checkout returns a client error without debug details",
+      "adapter": "http",
+      "expected_behavior": "Malformed product id returns HTTP 400",
+      "settings": {
+        "method": "POST",
+        "url": "/api/checkout",
+        "json": {"user_id": "error-case", "email": "buyer@example.test", "items": [{"product_id": "not-an-integer", "quantity": 1}]},
+        "checks": {"status_code": 400}
+      }
+    },
+    {
+      "id": "stale-order-state",
+      "checkpoint": "Frontend shows the newly returned order id",
+      "adapter": "browser",
+      "expected_behavior": "After checkout, the page shows an Order # confirmation",
+      "settings": {
+        "actions": [
+          {"action": "goto", "url": "/"},
+          {"action": "click", "selector": "#checkout-button", "wait_for_response": "/api/checkout", "response_status": 201},
+          {"action": "wait_for_network_idle"},
+          {"action": "expect_text", "selector": "#order-state", "text": "Order #"}
+        ]
+      }
+    }
+  ]
+}
