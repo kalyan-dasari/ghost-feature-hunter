@@ -42,3 +42,4 @@ The CLI writes two reports into the configured `report_dir` (`ghost-reports/` by
 - **Next Steps:**
   - <Targeted recommendation or regression verification>
 ```
+

@@ -51,3 +51,4 @@ def test_safe_url_strips_credentials_and_query():
 
 def test_safe_url_handles_invalid_url():
     assert safe_url("http://[invalid-ipv6") == "[INVALID_URL]"
+

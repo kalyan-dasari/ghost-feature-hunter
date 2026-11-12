@@ -54,3 +54,4 @@ A verification checkpoint is only valid if its expected behavior has an authorit
 > [!IMPORTANT]
 > **The Zero-Inference Rule:**
 > Inferred expectations must be explicitly tagged as `"source_of_expectation": "inferred_assumption"` and presented to the operator for confirmation before being treated as an authoritative failure. Never convert discovered routes into expected behavior automatically.
+

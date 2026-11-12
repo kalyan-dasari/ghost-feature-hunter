@@ -79,3 +79,4 @@ Every generated journey must be validated before execution:
    - Are URLs restricted to `base_url` or `allowed_hosts`?
 3. **Save Safeguard:**
    - Never overwrite an existing journey file without explicit operator confirmation.
+

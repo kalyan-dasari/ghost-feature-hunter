@@ -89,3 +89,4 @@ Features must handle bad inputs deterministically:
 1. **Schema Validation:** Send missing required fields, negative quantities, or invalid types. Assert `HTTP 400` or `422`.
 2. **Idempotency Check:** Send the same `Idempotency-Key` twice. Assert the second request returns `HTTP 409` or returns the original cached result without duplicating database rows.
 3. **Partial Transaction Failure:** Simulate downstream failure (e.g. payment decline or stock error). Assert the transaction rolled back and no orphaned records exist in the database.
+

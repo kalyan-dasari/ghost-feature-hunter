@@ -70,3 +70,4 @@ Common errors, diagnostic procedures, and recovery actions when running Ghost Fe
 **Remedy:**
 Pass `--force` when executing the audit or report command to replace existing reports:  
 `ghost-hunter audit <feature> --force`
+

@@ -65,3 +65,4 @@ Does the checkpoint require non-read HTTP (POST/PUT/PATCH/DELETE) or browser cli
 │           └── NO  ──> BLOCK mutating action. Mark status UNKNOWN ("Write request blocked").
 └── NO  ──> Allow read execution (GET/HEAD/OPTIONS).
 ```
+

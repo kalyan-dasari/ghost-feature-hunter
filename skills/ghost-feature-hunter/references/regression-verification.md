@@ -46,3 +46,4 @@ Confirm all existing test suites pass.
 When preserving an audit trail:
 - Avoid clobbering historical reports: copy the original `ghost-report.json` to `ghost-reports/baseline-<feature>.json` before re-running with `--force`.
 - Include the before-and-after evidence comparison in your final summary to the operator.
+
