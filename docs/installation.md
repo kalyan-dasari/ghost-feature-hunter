@@ -1,48 +1,78 @@
-# Installation and platform setup
+# Installation & Setup Guide
 
-## Install
+Ghost Hunt is a **skill-first** open-source verification system.
 
-The v0.1.0 source is not published to a package index yet. From a checkout, use Python 3.11 or newer in a virtual environment:
+You can install the Agent Skill into your coding agent with a single command and begin verifying features immediately using your agent's native tools. The Python CLI engine is an optional addition for deterministic CI pipelines.
+
+---
+
+## 1. Install the Agent Skill (`ghost-hunt`)
+
+### One-Line Install via Agent Skills CLI
+Install the skill into your current project or user profile:
 
 ```console
-python -m venv .venv
-# Windows PowerShell: .venv\Scripts\Activate.ps1
-# macOS/Linux: source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install .
+npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt
 ```
 
-From a source checkout, install the project with the capabilities you need:
+The CLI will prompt you to choose your agent:
+- **Google Antigravity:** `.agents/skills/ghost-hunt/`
+- **Anthropic Claude Code:** `.claude/skills/ghost-hunt/`
+- **OpenAI Codex:** `.agents/skills/ghost-hunt/`
+
+### Manual Installation
+Copy the canonical `skills/ghost-hunt/` directory into your agent's skills location:
+
+- **Google Antigravity:**
+  - Workspace: `.agents/skills/ghost-hunt/`
+  - Global: `~/.gemini/antigravity/skills/ghost-hunt/`
+- **Anthropic Claude Code:**
+  - Project: `.claude/skills/ghost-hunt/`
+  - Global: `~/.claude/skills/ghost-hunt/`
+- **OpenAI Codex:**
+  - Project: `.agents/skills/ghost-hunt/`
+  - Global: `~/.agents/skills/ghost-hunt/`
+
+Ensure `SKILL.md`, `references/`, `templates/`, and `examples/` are preserved together in the directory.
+
+---
+
+## 2. Using the Skill in Chat
+
+Open your coding agent in the target application repository and invoke:
+
+- **Antigravity:** `/ghost-hunt` or `/ghost-hunt investigate checkout`
+- **Claude Code:** `/ghost-hunt` or `/ghost-hunt investigate checkout`
+- **OpenAI Codex:** `$ghost-hunt` or `$ghost-hunt investigate checkout`
+- **Natural Language:** *"Investigate my checkout feature and verify whether inventory deduction works."*
+
+The skill executes immediately using your agent's native tools (file reading, terminal commands, `curl`, test runners, and browser).
+
+---
+
+## 3. Optional Deterministic CLI Verification Engine
+
+If you want hermetic, automated verification journeys for CI pipelines and schema-validated JSON reports, install the optional `ghost-hunter` Python package:
 
 ```console
+# From source checkout
 python -m pip install -e ".[dev,demo,browser]"
+
+# Install Chromium browser for Playwright checks
 python -m playwright install chromium
 ```
 
-The browser binary is managed by Playwright and is not included in the Python package. Basic CLI, HTTP, and SQLite checks do not require Flask or Playwright.
-
-## First run
-
+### Optional CLI Commands:
 ```console
+# Initialize project configuration
 ghost-hunter init --project-root .
-# Edit ghost-hunter.json and journeys/health.json.
+
+# Advisory static discovery
 ghost-hunter discover --project-root .
-ghost-hunter audit health --project-root .
-ghost-hunter report ghost-reports/ghost-report.json --force
+
+# Execute verification journey
+ghost-hunter audit <feature> --project-root .
+
+# Replace previous reports
+ghost-hunter audit <feature> --project-root . --force
 ```
-
-`init` refuses to replace an existing config or sample journey. Audit and discovery refuse to replace existing report files unless `--force` is passed. `audit` returns exit code 1 when an explicit assertion fails.
-
-## Install the agent skill
-
-The canonical skill is `skills/ghost-feature-hunter/SKILL.md`; its supporting references are next to it. Copy the complete `ghost-feature-hunter` directory to the corresponding skill location:
-
-- **Codex:** copy it to `.agents/skills/ghost-feature-hunter/` in the project or `~/.agents/skills/ghost-feature-hunter/` for the user. See the [official Codex installation guidance](https://developers.openai.com/api/reference/cli).
-- **Claude Code:** copy it to `.claude/skills/ghost-feature-hunter/` in the project or `~/.claude/skills/ghost-feature-hunter/` for the user. The directory should contain `SKILL.md` and `references/`; see [Claude Code skills documentation](https://code.claude.com/docs/en/skills).
-- **Google Antigravity:** copy it to `.agents/skills/ghost-feature-hunter/` in the project or `~/.gemini/config/skills/ghost-feature-hunter/` for the user. Keep `SKILL.md` and `references/` together; see [Antigravity skills documentation](https://antigravity.google/docs/skills).
-
-The compatibility notes under `integrations/` point to the canonical skill. They do not contain separate verification engines. Install the CLI from the checkout root with `python -m pip install -e .` (or include the optional extras above).
-
-## Supported discovery
-
-Static discovery is implemented for Flask-style Python route decorators and common SQLAlchemy model bases. It is advisory and does not establish runtime behavior. Other framework route conventions are not currently supported. HTTP, SQLite read-only, and browser checks are executed only from explicit journey steps. Test-suite and log checks are deferred beyond v0.1.0.

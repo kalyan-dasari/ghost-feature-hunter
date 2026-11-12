@@ -1,101 +1,158 @@
-# Ghost Feature Hunter
+# Ghost Hunt (`ghost-hunt`)
 
-Ghost Feature Hunter checks whether a feature journey matches explicit, observable expectations. Its Python CLI runs independently of AI agents and produces evidence-backed JSON and Markdown reports.
+> **DON'T TRUST THE FEATURE. VERIFY IT.**
 
-**Status: beta, v0.2.0.** Ghost Feature Hunter is an open-source verification engine and standard Agent Skill. It validates software features against explicit, human-authored behavioral journeys across frontend, API, persistence, and delivery layers.
+**Ghost Hunt** is an open-source, skill-first software verification tool for AI coding agents.
 
-## Install
+Instead of assuming a feature works because its code looks plausible, Ghost Hunt teaches your coding agent (Google Antigravity, Anthropic Claude Code, OpenAI Codex) to trace feature data flows end-to-end, run real safe checks, detect confirmed behavioral failures, pinpoint exact root causes, and verify fixes with reproducible evidence.
 
-### 1. Install as an AI Agent Skill (Antigravity, Claude Code, Codex)
+---
 
-Using the Agent Skills open standard CLI:
+## ⚡ Quick Install
 
-```console
-npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-feature-hunter
-```
-
-Or copy `skills/ghost-feature-hunter/` to your agent's skill directory (`.agents/skills/` or `.claude/skills/`).
-
-### 2. Install the Independent Python CLI
-
-Python 3.11 or newer is required:
+Install the canonical Agent Skill directly into your agent with one command:
 
 ```console
-python -m venv .venv
-python -m pip install --upgrade pip
-python -m pip install .
+npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt
 ```
 
-Install optional capabilities only when needed:
+The CLI will prompt you to select your agent:
+- **Google Antigravity** (`.agents/skills/ghost-hunt/`)
+- **Anthropic Claude Code** (`.claude/skills/ghost-hunt/`)
+- **OpenAI Codex** (`.agents/skills/ghost-hunt/`)
 
-```console
-python -m pip install ".[browser]"     # Playwright package
-python -m playwright install chromium  # Browser binary, installed separately
-python -m pip install ".[demo]"        # Broken Flask shop benchmark
-python -m pip install ".[dev,demo,browser]"  # Contributors and full test suite
-```
+*Manual install:* Simply copy [`skills/ghost-hunt/`](skills/ghost-hunt/) into your agent's skill directory.
 
-## Quick start
+---
 
-```console
-ghost-hunter init --project-root ./my-project
-ghost-hunter discover --project-root ./my-project
-```
+## 🚀 How to Invoke in Chat
 
-Edit `my-project/ghost-hunter.json` and `my-project/journeys/health.json` to define a local base URL and explicit expected behavior, then run:
+Once installed, open your coding agent in any application project and invoke:
 
-```console
-ghost-hunter audit health --project-root ./my-project
-ghost-hunter report ./my-project/ghost-reports/ghost-report.json --force
-```
+| Agent | Invocation |
+|---|---|
+| **Google Antigravity** | `/ghost-hunt` or `/ghost-hunt investigate <feature>` |
+| **Anthropic Claude Code** | `/ghost-hunt` or `/ghost-hunt investigate <feature>` |
+| **OpenAI Codex** | `$ghost-hunt` or `$ghost-hunt investigate <feature>` |
+| **Natural Language** | *"Investigate my checkout feature and verify whether inventory deduction works."* |
 
-The audit writes `ghost-report.json` and `ghost-report.md` under the configured report directory. Existing reports are protected; pass `--force` to replace them. An audit with an explicit failed assertion exits with code 1.
+---
 
-## Safety defaults
+## 🛠️ Dual Execution Modes
 
-- Discovery parses files statically; it does not import application code or execute commands found in files.
-- HTTP calls use an explicitly configured target and host policy, do not follow redirects, and default to read methods. Write methods require `allow_writes: true` in project config and `--allow-writes` on the CLI.
-- Production checks need `production_approved: true` in config and `--approve-production`.
-- Database support is limited to bounded SELECT queries against file-backed SQLite using a read-only connection.
-- Browser requests stay on the configured origin. Mutating HTTP methods and browser clicks/fills require write approval.
-- Static discovery is advisory only; it never establishes runtime behavior.
-- Sensitive values are redacted best-effort. Review reports before sharing.
+Ghost Hunt is architected to work immediately out of the box with zero runtime dependencies:
 
-Reports are unsigned files and can be edited. A PASS records that the configured assertion matched the observation captured by an adapter; it does not prove coverage beyond that assertion. Review the evidence and journey before treating a report as trustworthy.
-
-Read [docs/safety.md](docs/safety.md) before pointing checks at real systems.
-
-## Deliberately broken shop
-
-The isolated [broken Flask shop](examples/broken-flask-shop/README.md) contains 15 documented defects and an explicit benchmark journey. Its scoring manifest is read only by benchmark tests after the journey runs; the engine never uses it to decide findings. Run it only on loopback with synthetic data.
-
-## AI agent skill
-
-The canonical Agent Skills entry point is [skills/ghost-feature-hunter/SKILL.md](skills/ghost-feature-hunter/SKILL.md), with supporting references in the same directory. Install that one skill for Codex, Claude Code, or Google Antigravity using [docs/installation.md](docs/installation.md). Platform notes point to the canonical source; they do not duplicate the engine.
-
-## Supported adapters
-
-| Capability | Dependency | Scope in v0.1 |
+| Mode | Prerequisites | Capabilities |
 |---|---|---|
-| HTTP API | HTTPX (core) | Explicit methods, response status, JSON path, and text assertions |
-| Database | Python standard library | Bounded, read-only file-backed SQLite SELECT checks |
-| Browser | Playwright (optional) | Same-origin Chromium actions and assertions |
-| Discovery | Standard library | Static Flask route/model patterns, tests, frontend, likely services |
+| **Native Agent Tools (Default)** | **None.** Works in any repo immediately. | The agent uses its built-in file search, terminal commands (`curl`, test runners, Python/Node scripts), and browser automation tools. |
+| **Deterministic CLI Engine (Optional)** | Python 3.11+ and `pip install "ghost-feature-hunter[all]"` | Executes hermetic JSON journeys via `ghost-hunter audit <feature>` with strict schema validation and report rendering for CI/CD pipelines. |
 
-Test-suite execution and log phrase checks are deferred beyond v0.1. They do not contribute to release verification status.
+*Crucial Rule:* Never claim a tool was executed if it was not available.
 
-See [docs/adapters.md](docs/adapters.md), [docs/architecture.md](docs/architecture.md), and [docs/installation.md](docs/installation.md) for details and limitations.
+---
 
-## Development
+## 🧭 The 11-Step Investigation Protocol
 
-```console
+When you ask Ghost Hunt to investigate a feature, it executes this disciplined 11-step protocol:
+
+```text
+1. Feature Scope ──> 2. Static Discovery ──> 3. Flow Tracing ──> 4. Requirements
+                                                                         │
+7. Defect Isolation <── 6. Safe Execution <── 5. Journey Checkpoints <───┘
+│
+└──> 8. Root Cause ──> 9. Minimal Fix ──> 10. Regression ──> 11. Evidence Report
+```
+
+1. **Feature Scope:** Parse user intent, personas, and entry points.
+2. **Static Discovery:** Find routes, controllers, database models, templates, and existing tests.
+3. **Flow Tracing:** Trace data from frontend UI -> API endpoint -> service logic -> DB persistence.
+4. **Requirement Analysis:** Classify expectations by source (`user_requirement`, `product_documentation`, `api_contract`, `existing_test`, `inferred_assumption`). Never invent requirements.
+5. **Journey Checkpoints:** Structure discrete checkpoints covering happy path, auth, persistence, and error paths.
+6. **Safe Execution:** Run safe checks using `curl`, test commands, read-only DB queries, and browser tools.
+7. **Defect Isolation:** Record discrepancies as confirmed defects.
+8. **Root Cause Analysis:** Trace backward into code and cite exact file and line numbers (`path/to/file.py:L42-L55`).
+9. **Minimal Fix Proposal:** Present the smallest surgical patch for user approval. Never edit code without authorization.
+10. **Regression Verification:** Re-verify the failing checkpoint and adjacent test suites after fix approval.
+11. **Evidence-Backed Report:** Output a structured Markdown report with pass/fail breakdown and evidence references.
+
+---
+
+## ⚖️ The Three-Status Evidence Truth Table
+
+Ghost Hunt classifies every verification checkpoint into exactly one of three states:
+
+| Status | Exact Definition | Permissible Interpretation |
+|---|---|---|
+| **`PASS`** | A check ran and its observed result matched the explicit expectation. | Proves **only** the executed assertion. Never infer unasserted behavior. |
+| **`FAIL`** | An executed check directly contradicted an explicit expected behavior. | Proves the feature broke at this specific checkpoint. |
+| **`UNKNOWN`** | Prerequisites, runtimes, permissions, or evidence were unavailable. | **Never relabel as PASS or FAIL.** Indicates an unverified check. |
+
+---
+
+## 📖 Real-World Demonstration
+
+See a complete walkthrough of `/ghost-hunt investigate checkout` executed against our 15-defect benchmark store:  
+👉 **[Read the Checkout Investigation Walkthrough](skills/ghost-hunt/examples/checkout-investigation.md)**
+
+---
+
+## 🔧 Optional Deterministic Python CLI
+
+For automated CI/CD test gates and machine-validated JSON artifacts, the optional Python CLI is available:
+
+```bash
+# Install with all extras
+pip install "ghost-feature-hunter[all]"
+
+# Initialize project configuration
+ghost-hunter init --project-root .
+
+# Advisory static discovery
+ghost-hunter discover --project-root .
+
+# Execute verification journey
+ghost-hunter audit checkout --project-root .
+
+# Overwrite previous reports
+ghost-hunter audit checkout --project-root . --force
+```
+
+See [docs/installation.md](docs/installation.md) and [docs/safety.md](docs/safety.md) for CLI security policies and options.
+
+---
+
+## 📂 Repository Structure
+
+```text
+ghost-feature-hunter/
+├── skills/ghost-hunt/               # The Primary Canonical Agent Skill
+│   ├── SKILL.md                     # Skill instructions for coding agents (<200 lines)
+│   ├── references/                  # Specialized workflow references (progressive disclosure)
+│   ├── templates/                   # Reusable report and journey templates
+│   └── examples/                    # Real-world investigation walkthroughs
+├── src/ghost_hunter/                # Optional Python verification engine
+│   ├── adapters/                    # HTTP, SQLite, and killable Playwright adapters
+│   ├── discovery/                   # Static AST discovery
+│   └── reporting/                   # JSON and Markdown report rendering
+├── examples/broken-flask-shop/      # 15-defect benchmark application
+├── integrations/                    # Platform integration guides (Antigravity, Claude, Codex)
+└── tests/                           # 47 unit, integration, and benchmark tests
+```
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/safety.md](docs/safety.md).
+
+```bash
+# Run test suite
 python -m pip install -e ".[dev,demo,browser]"
-python -m playwright install chromium
 python -m pytest
 ```
 
-GitHub Actions runs the suite on Python 3.11 through 3.14. Optional dependencies remain optional for normal CLI users.
+---
 
-## Contributing and security
+## License
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md). The MIT license is in [LICENSE](LICENSE).
+MIT © Ghost Feature Hunter contributors.
