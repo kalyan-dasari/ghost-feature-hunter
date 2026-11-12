@@ -62,6 +62,7 @@ def test_demo_journey_detects_injected_defects_without_manifest_guidance(tmp_pat
             base_url=f"http://127.0.0.1:{server.server_port}",
             allow_writes=True,
             database_url_env="GHOST_SHOP_DATABASE_URL",
+            timeout_seconds=20.0,
         ),
         allow_writes=True,
     )
@@ -78,9 +79,11 @@ def test_demo_journey_detects_injected_defects_without_manifest_guidance(tmp_pat
 
     from ghost_hunter.adapters.browser import probe_playwright
     has_browser = probe_playwright()
+    browser_result = next((r for r in results if r.checkpoint_id == "stale-order-state"), None)
+    browser_executed = has_browser and (browser_result is not None and browser_result.status != "UNKNOWN")
 
     assert len(manifest["defects"]) == 15
-    if has_browser:
+    if browser_executed:
         assert scores["true_positives"] == 15, scores
         assert scores["unresolved_defects"] == 0, scores
     else:

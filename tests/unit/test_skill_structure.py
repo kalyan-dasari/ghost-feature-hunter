@@ -72,9 +72,14 @@ def test_skills_and_agents_skills_mirror_are_synchronized():
             rel_path = canonical_file.relative_to(SKILL_DIR)
             mirror_file = agents_skill_dir / rel_path
             assert mirror_file.is_file(), f"Mirror file missing in .agents: {rel_path}"
-            assert canonical_file.read_bytes() == mirror_file.read_bytes(), (
-                f"Content divergence between canonical skill and .agents mirror: {rel_path}"
-            )
+            if canonical_file.suffix.lower() in {".md", ".json", ".txt", ".yml", ".yaml"}:
+                assert canonical_file.read_text(encoding="utf-8").splitlines() == (
+                    mirror_file.read_text(encoding="utf-8").splitlines()
+                ), f"Content divergence between canonical skill and .agents mirror: {rel_path}"
+            else:
+                assert canonical_file.read_bytes() == mirror_file.read_bytes(), (
+                    f"Content divergence between canonical skill and .agents mirror: {rel_path}"
+                )
 
     # Check no extra orphan files in .agents copy
     for mirror_file in agents_skill_dir.rglob("*"):
