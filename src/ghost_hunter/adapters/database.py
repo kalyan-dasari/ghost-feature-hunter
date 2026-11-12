@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
+import tempfile
 import time
 from pathlib import Path
 from urllib.parse import quote, unquote, urlsplit
@@ -12,15 +13,29 @@ from urllib.parse import quote, unquote, urlsplit
 from ghost_hunter.adapters.base import AdapterContext, make_result, unknown_result
 from ghost_hunter.models import EvidenceItem, Journey, JourneyStep, Status, utc_now
 
-_FORBIDDEN_SQL = re.compile(
-    r"\b(insert|update|delete|replace|create|drop|alter|attach|detach|pragma|vacuum|reindex|analyze)\b",
-    re.IGNORECASE,
+_DANGEROUS_SQL_START = re.compile(
+    r"(?is)^\s*(insert|update|delete|replace|create|drop|alter|attach|detach|pragma|vacuum|reindex|analyze)\b"
 )
-_DANGEROUS_FUNCTION = re.compile(r"\b(load_extension|readfile|writefile)\s*\(", re.IGNORECASE)
 _ALLOWED_CHECKS = {"row_count_equals", "row_count_at_least", "first_row_equals"}
 
 
-def _database_path(database_url: str, project_root: Path) -> Path:
+def _sqlite_read_only_authorizer(action_code: int, arg1: str | None, arg2: str | None, db_name: str | None, trigger_name: str | None) -> int:
+    """Enforce read-only execution at the SQLite engine level."""
+    allowed_actions = {
+        sqlite3.SQLITE_SELECT,
+        sqlite3.SQLITE_READ,
+        sqlite3.SQLITE_FUNCTION,
+    }
+    if action_code == sqlite3.SQLITE_FUNCTION:
+        func = (arg2 or "").lower()
+        if func in {"load_extension", "readfile", "writefile"}:
+            return sqlite3.SQLITE_DENY
+        return sqlite3.SQLITE_OK
+
+    return sqlite3.SQLITE_OK if action_code in allowed_actions else sqlite3.SQLITE_DENY
+
+
+def _database_path(database_url: str, project_root: Path, environment: str = "development") -> Path:
     parsed = urlsplit(database_url)
     if (
         parsed.scheme not in {"sqlite", "sqlite+pysqlite"}
@@ -30,14 +45,30 @@ def _database_path(database_url: str, project_root: Path) -> Path:
     ):
         raise ValueError("Only file-backed SQLite URLs without extra URI options are supported.")
     raw_path = unquote(parsed.path)
-    if raw_path.startswith("/"):
+    if raw_path.startswith("/") and len(raw_path) > 2 and raw_path[2] == ":":
+        raw_path = raw_path[1:]
+    elif raw_path.startswith("/") and not Path(raw_path).is_absolute():
         raw_path = raw_path[1:]
     if not raw_path or raw_path == ":memory:":
         raise ValueError("Only file-backed SQLite databases are supported.")
     path = Path(raw_path).expanduser()
     if not path.is_absolute():
         path = project_root / path
-    return path.resolve()
+    resolved = path.resolve()
+    root = project_root.resolve()
+
+    allowed_roots = [root]
+    if environment in {"test", "development"}:
+        try:
+            allowed_roots.append(Path(tempfile.gettempdir()).resolve())
+        except OSError:
+            pass
+
+    in_allowed = any(resolved == r or r in resolved.parents for r in allowed_roots)
+    if not in_allowed:
+        raise ValueError(f"Database file path {resolved} is outside the allowed project directories.")
+
+    return resolved
 
 
 class DatabaseAdapter:
@@ -60,10 +91,7 @@ class DatabaseAdapter:
         if (
             not re.match(r"(?is)^\s*select\b", query)
             or ";" in query
-            or "--" in query
-            or "/*" in query
-            or _FORBIDDEN_SQL.search(query)
-            or _DANGEROUS_FUNCTION.search(query)
+            or _DANGEROUS_SQL_START.match(query)
         ):
             return unknown_result(journey, step, "Database query rejected by the read-only SQL guard.", start)
         if not isinstance(checks, dict) or not checks:
@@ -80,7 +108,7 @@ class DatabaseAdapter:
             return unknown_result(journey, step, f"Database environment variable {env_name!r} is unavailable.", start)
 
         try:
-            db_path = _database_path(database_url, context.project_root)
+            db_path = _database_path(database_url, context.project_root, context.config.environment)
             if not db_path.is_file():
                 return unknown_result(journey, step, "Configured SQLite database file does not exist.", start)
             sqlite_uri = f"file:{quote(db_path.as_posix(), safe='/:')}?mode=ro"
@@ -90,6 +118,7 @@ class DatabaseAdapter:
                 timeout=context.config.timeout_seconds,
             )
             connection.row_factory = sqlite3.Row
+            connection.set_authorizer(_sqlite_read_only_authorizer)
             deadline = time.monotonic() + context.config.timeout_seconds
             connection.set_progress_handler(lambda: int(time.monotonic() >= deadline), 1000)
             try:
