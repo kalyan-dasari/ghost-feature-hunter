@@ -155,11 +155,15 @@ def report(
         data = json.loads(report_json.read_text(encoding="utf-8"))
         audit_report = AuditReport.model_validate(data)
         destination = output or report_json.with_name("ghost-report.md")
+        resolved_dest = destination.resolve()
+        project_root = Path(audit_report.project_path).resolve()
+        if output and resolved_dest != project_root and project_root not in resolved_dest.parents and not force:
+            raise ValueError(f"Output destination must remain within the project root ({project_root}); pass --force to override.")
         if destination.exists() and not force:
             raise FileExistsError(f"Refusing to overwrite existing {destination}; pass --force to replace it")
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(render_markdown(audit_report), encoding="utf-8")
-    except (OSError, json.JSONDecodeError, ValidationError, FileExistsError) as exc:
+    except (ValueError, OSError, json.JSONDecodeError, ValidationError, FileExistsError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.echo(f"Markdown: {destination}")
 

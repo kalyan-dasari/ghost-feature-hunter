@@ -24,6 +24,22 @@ def _allow_request(url: str, method: str, base_origin: tuple[str, str, int | Non
     return origin_allowed and method_allowed
 
 
+def probe_playwright(timeout_seconds: float = 2.5) -> bool:
+    """Pre-flight check to verify whether Playwright driver can start in this environment."""
+    import subprocess
+    import sys
+
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", "from playwright.sync_api import sync_playwright; p = sync_playwright().start(); p.stop()"],
+            capture_output=True,
+            timeout=timeout_seconds,
+        )
+        return proc.returncode == 0
+    except (subprocess.TimeoutExpired, OSError, Exception):
+        return False
+
+
 class BrowserAdapter:
     def verify(self, context: AdapterContext, journey: Journey, step: JourneyStep):
         start = time.monotonic()
@@ -86,6 +102,13 @@ class BrowserAdapter:
         except ImportError:
             return unknown_result(
                 journey, step, "Playwright is not installed; install ghost-feature-hunter[browser].", start
+            )
+        if not probe_playwright():
+            return unknown_result(
+                journey,
+                step,
+                "Playwright browser runtime could not be initialized in this environment (startup probe timed out). Ensure loopback socketpair permissions and browser binaries are configured.",
+                start,
             )
         timeout_ms = min(int(context.config.timeout_seconds * 1000), 120_000)
         deadline = time.monotonic() + min(context.config.timeout_seconds, 120.0)

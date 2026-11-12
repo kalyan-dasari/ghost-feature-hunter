@@ -8,6 +8,7 @@
           "properties": {
     "schema_version": {"type": "string"},
     "tool_version": {"type": "string"},
+    "run_id": {"type": "string"},
     "project_path": {"type": "string"},
     "generated_at": {"type": "string", "format": "date-time"},
     "results": {
@@ -17,6 +18,7 @@
         "additionalProperties": false,
         "required": ["feature", "checkpoint_id", "checkpoint", "expected_behavior", "actual_observation", "status", "evidence", "timestamp", "reproducibility", "confidence_rationale", "duration_ms"],
         "properties": {
+          "run_id": {"type": "string"},
           "feature": {"type": "string"},
           "checkpoint_id": {"type": "string"},
           "checkpoint": {"type": "string"},
@@ -24,10 +26,14 @@
           "actual_observation": {"type": "string"},
           "status": {"enum": ["PASS", "FAIL", "UNKNOWN"]},
           "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
+          "source_of_expectation": {"type": "string"},
           "timestamp": {"type": "string", "format": "date-time"},
           "reproducibility": {"type": "string"},
           "confidence_rationale": {"type": "string"},
-          "duration_ms": {"type": "integer", "minimum": 0}
+          "adapter_name": {"type": "string"},
+          "adapter_version": {"type": "string"},
+          "duration_ms": {"type": "integer", "minimum": 0},
+          "limitations": {"type": "array", "items": {"type": "string"}}
         },
         "allOf": [
           {

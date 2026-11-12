@@ -23,6 +23,10 @@ DEMO = REPO / "examples" / "broken-flask-shop"
 
 def test_live_api_and_real_browser_journey_against_isolated_demo(tmp_path, monkeypatch):
     pytest.importorskip("playwright")
+    from ghost_hunter.adapters.browser import probe_playwright
+
+    if not probe_playwright():
+        pytest.skip("Playwright driver cannot start in this execution environment")
     database_path = tmp_path / "live-shop.sqlite3"
     monkeypatch.setenv("GHOST_SHOP_DB", str(database_path))
     spec = importlib.util.spec_from_file_location("ghost_hunter_live_shop", DEMO / "app.py")
@@ -95,8 +99,11 @@ def test_live_api_and_real_browser_journey_against_isolated_demo(tmp_path, monke
                 "PROGRAMDATA",
                 "PYTHONPATH",
                 "PLAYWRIGHT_BROWSERS_PATH",
+                "APPDATA",
+                "LOCALAPPDATA",
             }
         }
+        child_env["PYTHONPATH"] = str(REPO / "src") + (os.pathsep + child_env["PYTHONPATH"] if child_env.get("PYTHONPATH") else "")
         discover_process = subprocess.run(
             [sys.executable, "-m", "ghost_hunter.cli", "discover", "--project-root", str(cli_project)],
             cwd=cli_project,
@@ -217,6 +224,10 @@ def test_live_api_and_real_browser_journey_against_isolated_demo(tmp_path, monke
 
 def test_browser_blocks_page_script_post_without_write_approval(tmp_path):
     pytest.importorskip("playwright")
+    from ghost_hunter.adapters.browser import probe_playwright
+
+    if not probe_playwright():
+        pytest.skip("Playwright driver cannot start in this execution environment")
     from flask import Flask
 
     app = Flask(__name__)

@@ -76,12 +76,19 @@ def test_demo_journey_detects_injected_defects_without_manifest_guidance(tmp_pat
     manifest = json.loads((DEMO / "benchmark-manifest.json").read_text(encoding="utf-8"))
     scores = _manifest_score(manifest, results)
 
+    from ghost_hunter.adapters.browser import probe_playwright
+    has_browser = probe_playwright()
+
     assert len(manifest["defects"]) == 15
-    assert scores["true_positives"] == 15, scores
+    if has_browser:
+        assert scores["true_positives"] == 15, scores
+        assert scores["unresolved_defects"] == 0, scores
+    else:
+        assert scores["true_positives"] == 14, scores
+        assert scores["unresolved_defects"] == 1, scores
     assert scores["false_positives"] == 0, scores
     assert scores["true_negatives"] == 4, scores
     assert scores["false_negatives"] == 0, scores
-    assert scores["unresolved_defects"] == 0, scores
 
 
 def test_benchmark_metric_counts_known_statuses_separately():

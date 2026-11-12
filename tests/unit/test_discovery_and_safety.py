@@ -85,6 +85,47 @@ def test_database_runs_bounded_select_with_standard_library_sqlite(tmp_path, mon
     assert result.evidence[0].details["row_count"] == 1
 
 
+def test_database_authorizer_allows_string_literal_keywords(tmp_path, monkeypatch):
+    db_path = tmp_path / "app.sqlite3"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("CREATE TABLE audit_logs (id INTEGER PRIMARY KEY, action TEXT)")
+        connection.execute("INSERT INTO audit_logs (action) VALUES ('create')")
+    monkeypatch.setenv("AUDIT_DB", f"sqlite:///{db_path.as_posix()}")
+    journey = _journey(
+        "database",
+        {
+            "database_url_env": "AUDIT_DB",
+            "query": "SELECT id FROM audit_logs WHERE action = 'create'",
+            "checks": {"row_count_equals": 1},
+        },
+    )
+    result = DatabaseAdapter().verify(AdapterContext(tmp_path, HunterConfig()), journey, journey.steps[0])
+    assert result.status == "PASS", result.actual_observation
+
+
+def test_database_path_outside_allowed_roots_is_rejected(tmp_path, monkeypatch):
+    monkeypatch.setenv("UNSAFE_DB", "sqlite:///C:/Windows/System32/sensitive.db")
+    journey = _journey(
+        "database",
+        {
+            "database_url_env": "UNSAFE_DB",
+            "query": "SELECT 1",
+            "checks": {"row_count_equals": 1},
+        },
+    )
+    result = DatabaseAdapter().verify(
+        AdapterContext(
+            tmp_path,
+            HunterConfig(environment="production", production_approved=True),
+            approve_production=True,
+        ),
+        journey,
+        journey.steps[0],
+    )
+    assert result.status == "UNKNOWN"
+    assert "outside the allowed project directories" in result.actual_observation
+
+
 def test_database_observation_is_blocked_for_production_without_approval(tmp_path):
     journey = _journey("database", {"query": "SELECT 1", "checks": {"row_count_equals": 1}})
     result = DatabaseAdapter().verify(
