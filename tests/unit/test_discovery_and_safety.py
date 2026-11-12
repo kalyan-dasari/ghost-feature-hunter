@@ -114,7 +114,13 @@ def test_database_path_outside_allowed_roots_is_rejected(tmp_path, monkeypatch):
         },
     )
     result = DatabaseAdapter().verify(
-        AdapterContext(tmp_path, HunterConfig(environment="production")), journey, journey.steps[0]
+        AdapterContext(
+            tmp_path,
+            HunterConfig(environment="production", production_approved=True),
+            approve_production=True,
+        ),
+        journey,
+        journey.steps[0],
     )
     assert result.status == "UNKNOWN"
     assert "outside the allowed project directories" in result.actual_observation
