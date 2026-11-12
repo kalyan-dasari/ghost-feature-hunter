@@ -162,7 +162,7 @@ def report(
         project_root = Path(audit_report.project_path).resolve()
 
         is_contained = resolved_dest == project_root or project_root in resolved_dest.parents
-        if output and not is_contained and not allow_external_output:
+        if not is_contained and not allow_external_output:
             raise ValueError(
                 f"Refusing to write report outside project root ({project_root}) to {resolved_dest}. "
                 "Pass --allow-external-output to permit writing outside the project root."

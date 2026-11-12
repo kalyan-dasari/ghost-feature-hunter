@@ -6,7 +6,7 @@ Contributions are welcome. Keep behavior evidence-based, defaults safe, and unsu
 
 ```console
 python -m venv .venv
-python -m pip install -e ".[dev,database,demo,browser]"
+python -m pip install -e ".[dev,demo,browser]"
 python -m playwright install chromium
 python -m pytest
 ```

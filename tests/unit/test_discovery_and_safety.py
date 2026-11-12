@@ -170,3 +170,212 @@ def test_browser_navigation_without_assertion_is_unknown(tmp_path):
     )
     assert result.status == "UNKNOWN"
     assert "explicit page or response assertion" in result.actual_observation
+
+
+def test_browser_worker_blocking_hang_is_terminated_within_bounded_time(tmp_path):
+    from ghost_hunter.adapters.browser import BrowserAdapter
+    import time
+
+    journey = _journey(
+        "browser",
+        {
+            "_simulate_blocking_hang": True,
+            "timeout_seconds": 1.0,
+            "actions": [
+                {"action": "expect_text", "selector": "#title", "text": "Shop"},
+            ],
+        },
+    )
+    start_time = time.monotonic()
+    result = BrowserAdapter().verify(
+        AdapterContext(tmp_path, HunterConfig(base_url="http://localhost:8000")),
+        journey,
+        journey.steps[0],
+    )
+    duration = time.monotonic() - start_time
+
+    assert result.status == "UNKNOWN"
+    assert "exceeded hard deadline" in result.actual_observation
+    assert "was terminated" in result.actual_observation
+    assert duration < 4.0, f"Worker termination took too long: {duration}s"
+
+
+def test_database_temp_dir_allowed_in_dev_and_test(tmp_path, monkeypatch):
+    import tempfile
+    from pathlib import Path
+
+    temp_db = Path(tempfile.gettempdir()) / f"temp_test_hunter_{tmp_path.name}.sqlite3"
+    conn = sqlite3.connect(temp_db)
+    conn.execute("CREATE TABLE test_data (id INT)")
+    conn.execute("INSERT INTO test_data VALUES (42)")
+    conn.commit()
+    conn.close()
+
+    try:
+        monkeypatch.setenv("TEMP_DB", f"sqlite:///{temp_db.as_posix()}")
+        journey = _journey(
+            "database",
+            {"database_url_env": "TEMP_DB", "query": "SELECT id FROM test_data", "checks": {"row_count_equals": 1}},
+        )
+        res_test = DatabaseAdapter().verify(
+            AdapterContext(tmp_path, HunterConfig(environment="test")),
+            journey,
+            journey.steps[0],
+        )
+        assert res_test.status == "PASS", res_test.actual_observation
+
+        res_dev = DatabaseAdapter().verify(
+            AdapterContext(tmp_path, HunterConfig(environment="development")),
+            journey,
+            journey.steps[0],
+        )
+        assert res_dev.status == "PASS", res_dev.actual_observation
+    finally:
+        try:
+            temp_db.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def test_database_temp_dir_rejected_in_production_and_staging(tmp_path, monkeypatch):
+    import tempfile
+    from pathlib import Path
+
+    temp_db = Path(tempfile.gettempdir()) / f"temp_prod_hunter_{tmp_path.name}.sqlite3"
+    conn = sqlite3.connect(temp_db)
+    conn.execute("CREATE TABLE test_data (id INT)")
+    conn.commit()
+    conn.close()
+
+    try:
+        monkeypatch.setenv("TEMP_DB", f"sqlite:///{temp_db.as_posix()}")
+        journey = _journey(
+            "database",
+            {"database_url_env": "TEMP_DB", "query": "SELECT 1", "checks": {"row_count_equals": 0}},
+        )
+        res_staging = DatabaseAdapter().verify(
+            AdapterContext(tmp_path, HunterConfig(environment="staging")),
+            journey,
+            journey.steps[0],
+        )
+        assert res_staging.status == "UNKNOWN"
+        assert "outside the allowed project directories" in res_staging.actual_observation
+
+        res_prod = DatabaseAdapter().verify(
+            AdapterContext(
+                tmp_path,
+                HunterConfig(environment="production", production_approved=True),
+                approve_production=True,
+            ),
+            journey,
+            journey.steps[0],
+        )
+        assert res_prod.status == "UNKNOWN"
+        assert "outside the allowed project directories" in res_prod.actual_observation
+    finally:
+        try:
+            temp_db.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def test_database_allowed_database_dirs_config(tmp_path, monkeypatch):
+    custom_dir = tmp_path.parent / "custom_dbs"
+    custom_dir.mkdir(exist_ok=True)
+    custom_db = custom_dir / "external.sqlite3"
+    conn = sqlite3.connect(custom_db)
+    conn.execute("CREATE TABLE ext_data (val TEXT)")
+    conn.execute("INSERT INTO ext_data VALUES ('ok')")
+    conn.commit()
+    conn.close()
+
+    try:
+        monkeypatch.setenv("EXT_DB", f"sqlite:///{custom_db.as_posix()}")
+        journey = _journey(
+            "database",
+            {"database_url_env": "EXT_DB", "query": "SELECT val FROM ext_data", "checks": {"row_count_equals": 1}},
+        )
+
+        # In staging environment, temp dirs are not allowed, so only project_root and allowed_database_dirs apply
+        # Without allowed_database_dirs -> rejected
+        res_rejected = DatabaseAdapter().verify(
+            AdapterContext(tmp_path, HunterConfig(environment="staging", allowed_database_dirs=[])),
+            journey,
+            journey.steps[0],
+        )
+        assert res_rejected.status == "UNKNOWN"
+        assert "outside the allowed project directories" in res_rejected.actual_observation
+
+        # With allowed_database_dirs -> accepted
+        res_accepted = DatabaseAdapter().verify(
+            AdapterContext(
+                tmp_path,
+                HunterConfig(environment="staging", allowed_database_dirs=[str(custom_dir)]),
+            ),
+            journey,
+            journey.steps[0],
+        )
+        assert res_accepted.status == "PASS", res_accepted.actual_observation
+    finally:
+        try:
+            custom_db.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def test_database_directory_traversal_rejected(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    traversal_db = tmp_path / "subdir" / ".." / ".." / "traversal.sqlite3"
+    monkeypatch.setenv("TRAVERSAL_DB", f"sqlite:///{traversal_db.as_posix()}")
+    journey = _journey(
+        "database",
+        {"database_url_env": "TRAVERSAL_DB", "query": "SELECT 1", "checks": {"row_count_equals": 1}},
+    )
+    result = DatabaseAdapter().verify(
+        AdapterContext(
+            tmp_path,
+            HunterConfig(environment="production", production_approved=True),
+            approve_production=True,
+        ),
+        journey,
+        journey.steps[0],
+    )
+    assert result.status == "UNKNOWN"
+    assert "outside the allowed project directories" in result.actual_observation
+
+
+def test_database_symlink_escape_rejected(tmp_path, monkeypatch):
+    import os
+    import pytest
+    from pathlib import Path
+
+    outside_dir = tmp_path.parent / "symlink_outside_db_dir"
+    outside_dir.mkdir(exist_ok=True)
+    outside_db = outside_dir / "secret.sqlite3"
+    with sqlite3.connect(outside_db) as conn:
+        conn.execute("CREATE TABLE secret (val TEXT)")
+
+    symlink_in_project = tmp_path / "symlink_db.sqlite3"
+    try:
+        os.symlink(str(outside_db), str(symlink_in_project))
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlink creation requires elevated privileges on this environment")
+
+    monkeypatch.setenv("SYMLINK_DB", f"sqlite:///{symlink_in_project.as_posix()}")
+    journey = _journey(
+        "database",
+        {"database_url_env": "SYMLINK_DB", "query": "SELECT 1", "checks": {"row_count_equals": 1}},
+    )
+    result = DatabaseAdapter().verify(
+        AdapterContext(
+            tmp_path,
+            HunterConfig(environment="production", production_approved=True),
+            approve_production=True,
+        ),
+        journey,
+        journey.steps[0],
+    )
+    assert result.status == "UNKNOWN"
+    assert "outside the allowed project directories" in result.actual_observation
+
