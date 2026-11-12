@@ -47,20 +47,34 @@ npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt -y --copy -
 To install the skill globally so it is accessible across all projects on your machine, pass `-g`:
 
 ```console
+# Google Antigravity
+npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt -g --copy --agent antigravity
+
+# Anthropic Claude Code
 npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt -g --copy --agent claude-code
+
+# OpenAI Codex
+npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt -g --copy --agent codex
 ```
+
+#### Skills CLI Installation Targets:
+| Target Agent | Project-Level Path | Global User Path (`-g`) |
+|---|---|---|
+| **Google Antigravity** | `<project-root>/.agents/skills/ghost-hunt/` | `~/.gemini/config/skills/ghost-hunt/` |
+| **Anthropic Claude Code** | `<project-root>/.claude/skills/ghost-hunt/` | `~/.claude/skills/ghost-hunt/` |
+| **OpenAI Codex** | `<project-root>/.agents/skills/ghost-hunt/` | `~/.agents/skills/ghost-hunt/` |
 
 ### Manual Installation
 If you prefer not to use `npx`, copy the canonical [`skills/ghost-hunt/`](../skills/ghost-hunt/) directory directly into your agent's configuration:
 
 - **Google Antigravity:**
-  - Workspace: `.agents/skills/ghost-hunt/`
-  - Global: `~/.gemini/antigravity/skills/ghost-hunt/`
+  - Workspace: `<project-root>/.agents/skills/ghost-hunt/` (recommended)
+  - Global: `~/.gemini/antigravity/skills/ghost-hunt/` or `~/.gemini/config/skills/ghost-hunt/`
 - **Anthropic Claude Code:**
-  - Project: `.claude/skills/ghost-hunt/`
+  - Project: `<project-root>/.claude/skills/ghost-hunt/`
   - Global: `~/.claude/skills/ghost-hunt/`
 - **OpenAI Codex:**
-  - Project: `.agents/skills/ghost-hunt/`
+  - Project: `<project-root>/.agents/skills/ghost-hunt/`
   - Global: `~/.agents/skills/ghost-hunt/`
 
 Ensure `SKILL.md`, `references/`, `templates/`, and `examples/` are preserved together in the directory.

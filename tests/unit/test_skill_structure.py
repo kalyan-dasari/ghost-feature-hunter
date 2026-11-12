@@ -90,20 +90,17 @@ def test_skills_and_agents_skills_mirror_are_synchronized():
 
 
 def test_all_documentation_relative_links_resolve():
-    """Verify that all relative markdown links across documentation resolve to existing files."""
+    """Verify that all relative markdown links across all repository documentation resolve to existing files."""
+    ignored_parts = {".git", ".venv", "venv", "node_modules", ".pytest_cache", "build", "dist", ".eggs"}
     docs_to_check = [
-        REPO_ROOT / "README.md",
-        REPO_ROOT / "CHANGELOG.md",
-        REPO_ROOT / "docs" / "installation.md",
-        REPO_ROOT / "docs" / "safety.md",
-        REPO_ROOT / "docs" / "architecture.md",
-        REPO_ROOT / "docs" / "adapters.md",
-    ] + list(SKILL_DIR.rglob("*.md"))
+        p for p in REPO_ROOT.rglob("*.md")
+        if not any(part in ignored_parts or part.endswith(".egg-info") for part in p.parts)
+    ]
+
+    assert len(docs_to_check) >= 40, f"Expected comprehensive markdown scan, found {len(docs_to_check)}"
 
     broken = []
     for doc in docs_to_check:
-        if not doc.is_file():
-            continue
         text = doc.read_text(encoding="utf-8")
         links = re.findall(r"\[(?:[^\]]*)\]\(([^)]+)\)", text)
         for link in links:
@@ -115,5 +112,6 @@ def test_all_documentation_relative_links_resolve():
                 broken.append(f"{doc.relative_to(REPO_ROOT)}: broken link '{link}' -> {resolved}")
 
     assert not broken, f"Broken documentation links found:\n" + "\n".join(broken)
+
 
 

@@ -45,7 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The `v0.3.0` public release was verified and published on 2026-11-12:
 
-- [x] All unit, integration, and benchmark tests pass across Python 3.11, 3.12, 3.13, and 3.14 on Linux and Windows.
+- [x] GitHub Actions CI passed across Python 3.11, 3.12, 3.13, and 3.14 on Ubuntu (ubuntu-latest).
+- [x] Local Windows validation verified on Python 3.14.6 (57 passed, 2 skipped unprivileged symlink tests).
 - [x] Public `npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt` succeeds in clean consumer project across Antigravity, Claude Code, and Codex.
 - [x] Working tree is clean and `main` branch contains all verified fixes (PR #5 merged at `489eaf2`).
 - [x] GitHub release `v0.3.0` published with release notes matching `[0.3.0]`.

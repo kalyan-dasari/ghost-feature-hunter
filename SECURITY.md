@@ -1,9 +1,26 @@
-# Security policy
+# Security Policy
 
-Ghost Feature Hunter is an alpha developer tool. Use isolated test targets and synthetic data. Review [docs/safety.md](docs/safety.md) before running checks that can access services, execute pytest, or render an application in a browser.
+Ghost Hunt is an open-source Agent Skill (v0.3.0) for AI coding agents, accompanied by an optional Python verification CLI (`ghost-feature-hunter` v0.2.0).
 
-## Reporting a vulnerability
+Always verify features against isolated test environments and synthetic data. Review [docs/safety.md](docs/safety.md) before running checks that access services, query databases, or execute browser automation.
 
-Please use the repository host's private vulnerability reporting feature when available. If private reporting is not enabled, contact a maintainer privately before public disclosure. Do not include credentials, payment data, or personal information in an issue. Maintainers should publish a dedicated contact channel before a public release.
+## Supported Versions
 
-Include the affected version, a concise impact description, safe reproduction steps, and any suggested mitigation. Do not test against systems you do not own or have permission to assess.
+| Component | Version | Supported |
+|---|---|---|
+| Agent Skill (`ghost-hunt`) | 0.3.0 | :white_check_mark: |
+| Python CLI (`ghost-feature-hunter`) | 0.2.0 | :white_check_mark: |
+
+## Reporting a Vulnerability
+
+Please report security vulnerabilities privately using GitHub's **[Private Vulnerability Reporting](https://github.com/kalyan-dasari/ghost-feature-hunter/security/advisories/new)** feature on this repository.
+
+If private vulnerability reporting is unavailable, contact a repository maintainer privately before public disclosure. Do not open public issues containing suspected vulnerabilities, credentials, API keys, or personal data.
+
+When reporting an issue, please include:
+- Affected component (Agent Skill or Python CLI) and version.
+- Concise impact description.
+- Safe, minimal reproduction steps.
+- Any suggested mitigation or patch.
+
+Do not perform security testing against systems or data you do not own or have explicit permission to assess.

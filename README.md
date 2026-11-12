@@ -26,11 +26,11 @@ When asked to test a feature, coding agents often default to superficial code re
 
 Ghost Hunt is designed around the open [Agent Skills specification](https://skills.sh/) and works with leading AI coding agents:
 
-| Agent | Invocation Syntax | Installation Directory |
+| Agent | Invocation Syntax | Project Installation Directory |
 |---|---|---|
-| **Google Antigravity** | `/ghost-hunt` or `/ghost-hunt investigate <feature>` | `.agents/skills/ghost-hunt/` |
-| **Anthropic Claude Code** | `/ghost-hunt` or `/ghost-hunt investigate <feature>` | `.claude/skills/ghost-hunt/` |
-| **OpenAI Codex** | `$ghost-hunt` or `$ghost-hunt investigate <feature>` | `.agents/skills/ghost-hunt/` |
+| **Google Antigravity** | `/ghost-hunt` or `/ghost-hunt investigate <feature>` | `<project-root>/.agents/skills/ghost-hunt/` |
+| **Anthropic Claude Code** | `/ghost-hunt` or `/ghost-hunt investigate <feature>` | `<project-root>/.claude/skills/ghost-hunt/` |
+| **OpenAI Codex** | `$ghost-hunt` or `$ghost-hunt investigate <feature>` | `<project-root>/.agents/skills/ghost-hunt/` |
 
 ---
 

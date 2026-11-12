@@ -4,25 +4,26 @@ Install and use the `ghost-hunt` Agent Skill with Google Antigravity.
 
 ---
 
-## 1. Quick Install via Agent Skills CLI
+## 1. Install via Agent Skills CLI
 
 From your project root (requires Node.js 22.20.0+):
 
 ```bash
-# Interactive selection
-npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt
-
-# Or direct non-interactive installation
+# Project-level install (recommended)
 npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt -y --copy --agent antigravity
+
+# Or Global user-level install across all projects
+npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt -g --copy --agent antigravity
 ```
 
-The skill is installed to `.agents/skills/ghost-hunt/`.
+- **Project Target:** `<project-root>/.agents/skills/ghost-hunt/`
+- **Global Target (Skills CLI):** `~/.gemini/config/skills/ghost-hunt/`
 
 ---
 
 ## 2. Manual Installation
 
-Copy the canonical skill directory into your project workspace or global Antigravity configuration:
+If installing manually without `npx`, copy the canonical skill directory into your project workspace or global Antigravity configuration:
 
 ```bash
 # Workspace-scoped skill (recommended)
@@ -33,6 +34,9 @@ cp -r path/to/ghost-feature-hunter/skills/ghost-hunt/ .agents/skills/ghost-hunt/
 mkdir -p ~/.gemini/antigravity/skills/
 cp -r path/to/ghost-feature-hunter/skills/ghost-hunt/ ~/.gemini/antigravity/skills/ghost-hunt/
 ```
+
+> [!NOTE]
+> **Antigravity Global Paths:** The official Skills CLI maps Antigravity global skills to `~/.gemini/config/skills/`, while Antigravity's native environment also discovers global skills from `~/.gemini/antigravity/skills/`. Both paths are recognized depending on your setup; workspace installation (`.agents/skills/ghost-hunt/`) is recommended for project isolation.
 
 Keep `SKILL.md`, `references/`, `templates/`, and `examples/` together in the directory.
 
