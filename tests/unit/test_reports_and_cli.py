@@ -84,3 +84,14 @@ def test_cli_help_documents_expected_commands():
 def test_evidence_item_accepts_timestamp_default():
     evidence = EvidenceItem(reference="unit:test", summary="assertion observed")
     assert evidence.observed_at.tzinfo is not None
+
+
+def test_report_rejects_unjailed_output_path(tmp_path):
+    report_file = tmp_path / "report.json"
+    report = AuditReport.build(tmp_path, [])
+    report_file.write_text(json.dumps(report.model_dump(mode="json")), encoding="utf-8")
+    runner = CliRunner()
+    unsafe_dest = tmp_path.parent / "escape.md"
+    result = runner.invoke(app, ["report", str(report_file), "--output", str(unsafe_dest)])
+    assert result.exit_code != 0
+    assert "Output destination must remain within the project root" in result.output
