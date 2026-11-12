@@ -1,5 +1,67 @@
-# Google Antigravity integration
+# Google Antigravity Integration
 
-Copy the canonical Agent Skill directory from `../../skills/ghost-feature-hunter/` to `.agents/skills/ghost-feature-hunter/` in a project or `~/.gemini/config/skills/ghost-feature-hunter/` for user-wide availability. Antigravity's app, CLI, and IDE use these shared workspace/global locations. Keep `SKILL.md` and its `references/` directory together. See [Antigravity skills documentation](https://antigravity.google/docs/skills).
+Install the `ghost-hunt` Agent Skill for Google Antigravity.
 
-Install the Python CLI separately from the repository root with `python -m pip install -e .`. This integration uses the same engine as Codex and Claude Code; there is no platform-specific verification engine.
+---
+
+## 1. Quick Install via Agent Skills CLI
+
+From your project root:
+
+```bash
+npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt
+```
+
+When prompted, select **Google Antigravity**.
+
+---
+
+## 2. Manual Installation
+
+Copy the canonical skill directory into your project workspace or global Antigravity configuration:
+
+```bash
+# Workspace-scoped skill (recommended)
+mkdir -p .agents/skills/
+cp -r path/to/ghost-feature-hunter/skills/ghost-hunt/ .agents/skills/ghost-hunt/
+
+# Or Global user configuration
+mkdir -p ~/.gemini/antigravity/skills/
+cp -r path/to/ghost-feature-hunter/skills/ghost-hunt/ ~/.gemini/antigravity/skills/ghost-hunt/
+```
+
+Keep `SKILL.md`, `references/`, `templates/`, and `examples/` together in the directory.
+
+---
+
+## 3. How to Invoke in Antigravity Chat
+
+In any Antigravity conversation or IDE session, invoke the skill directly:
+
+```text
+/ghost-hunt
+```
+
+Or trigger specific feature investigations:
+
+```text
+/ghost-hunt investigate checkout
+```
+
+Or ask in natural language:
+
+```text
+"Investigate my checkout feature and verify whether order persistence works."
+```
+
+Antigravity executes the investigation using its native tools (file reader, shell/terminal commands, browser tool).
+
+---
+
+## 4. Optional Advanced CLI Engine
+
+If you want deterministic CI/CD verification journeys using the Python CLI, install the package separately:
+
+```bash
+pip install "ghost-feature-hunter[all]"
+```

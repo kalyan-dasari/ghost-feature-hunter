@@ -1,6 +1,19 @@
 # Troubleshooting & Operational Guidance
 
-Common errors, diagnostic procedures, and recovery actions when running Ghost Feature Hunter.
+Common errors, diagnostic procedures, and recovery actions when running Ghost Hunt.
+
+---
+
+## 0. CLI Engine Not Installed
+
+**Symptom:** `ghost-hunter: command not found` or module not found.
+
+**Cause:** The optional Python verification engine is not installed in the current environment.
+
+**Remedy:**
+Ghost Hunt **does not require the Python CLI** to investigate features.
+1. Use your agent's native tools: inspect code with file tools, execute requests with `curl`, test persistence with `sqlite3` CLI, and run test suites directly.
+2. If you specifically desire the deterministic CLI engine (e.g. for CI pipelines), install it via `pip install "ghost-feature-hunter[all]"`.
 
 ---
 
