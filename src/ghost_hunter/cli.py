@@ -163,7 +163,7 @@ def report(
             raise FileExistsError(f"Refusing to overwrite existing {destination}; pass --force to replace it")
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(render_markdown(audit_report), encoding="utf-8")
-    except (OSError, json.JSONDecodeError, ValidationError, FileExistsError) as exc:
+    except (ValueError, OSError, json.JSONDecodeError, ValidationError, FileExistsError) as exc:
         raise typer.BadParameter(str(exc)) from exc
     typer.echo(f"Markdown: {destination}")
 
