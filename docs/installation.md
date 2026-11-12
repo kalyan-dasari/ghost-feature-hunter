@@ -35,11 +35,19 @@ ghost-hunter report ghost-reports/ghost-report.json --force
 
 ## Install the agent skill
 
-The canonical skill is `skills/ghost-feature-hunter/SKILL.md`; its supporting references are next to it. Copy the complete `ghost-feature-hunter` directory to the corresponding skill location:
+### Quick install via Agent Skills CLI
+Install the skill into your current workspace or global agent environment:
 
-- **Codex:** copy it to `.agents/skills/ghost-feature-hunter/` in the project or `~/.agents/skills/ghost-feature-hunter/` for the user. See the [official Codex installation guidance](https://developers.openai.com/api/reference/cli).
-- **Claude Code:** copy it to `.claude/skills/ghost-feature-hunter/` in the project or `~/.claude/skills/ghost-feature-hunter/` for the user. The directory should contain `SKILL.md` and `references/`; see [Claude Code skills documentation](https://code.claude.com/docs/en/skills).
-- **Google Antigravity:** copy it to `.agents/skills/ghost-feature-hunter/` in the project or `~/.gemini/config/skills/ghost-feature-hunter/` for the user. Keep `SKILL.md` and `references/` together; see [Antigravity skills documentation](https://antigravity.google/docs/skills).
+```console
+npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-feature-hunter
+```
+
+### Manual installation
+Copy the canonical `skills/ghost-feature-hunter` directory:
+
+- **Google Antigravity:** copy it to `.agents/skills/ghost-feature-hunter/` in the project or `<appDataDir>/skills/ghost-feature-hunter/` for global user availability. Keep `SKILL.md` and `references/` together.
+- **Claude Code:** copy it to `.claude/skills/ghost-feature-hunter/` in the project or `~/.claude/skills/ghost-feature-hunter/` for user-wide availability.
+- **Codex / OpenAI Agents:** copy it to `.agents/skills/ghost-feature-hunter/` in the project root.
 
 The compatibility notes under `integrations/` point to the canonical skill. They do not contain separate verification engines. Install the CLI from the checkout root with `python -m pip install -e .` (or include the optional extras above).
 

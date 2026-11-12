@@ -8,7 +8,7 @@ Ghost Feature Hunter inspects projects that may contain secrets, private data, o
 - HTTP checks default to GET and do not follow redirects. A non-read method runs only when `allow_writes` is `true` in `ghost-hunter.json` and the operator passes `--allow-writes`.
 - Targets must match the configured `base_url` or an entry in `allowed_hosts`. Loopback targets are permitted when no base URL is configured.
 - A project configured for `production` is blocked unless `production_approved` is true in config and `--approve-production` is passed. This is a guardrail, not a guarantee that a host is non-production.
-- Database checks currently support only file-backed SQLite and execute a restricted SELECT query through a read-only URI. Queries are limited to 1,000 returned rows. No migration, write, or destructive operation is offered.
+- Database checks currently support only file-backed SQLite, require the database file to reside within the project root, and execute restricted SELECT queries guarded at the SQLite C-engine level via connection authorizer callbacks. Queries are limited to 1,000 returned rows. No migration, write, or destructive operation is offered.
 - Browser checks require an explicit base URL, allow at most 25 actions per checkpoint, and block cross-origin requests. Mutating HTTP methods require both write approvals. Page scripts still execute and may have effects through read methods or unsupported browser channels; this is not a sandbox.
 - HTTP responses are capped at 2 MB. Reports omit request headers and request bodies. Common credentials and email addresses are redacted from textual evidence.
 
