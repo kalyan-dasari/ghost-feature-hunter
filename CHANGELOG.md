@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.3.0] - Unreleased
+## [0.3.0] - 2026-11-12
 
 ### Added
 - **Skill-First Architecture:** Rebranded and refactored the canonical skill to `skills/ghost-hunt/` conforming to the Agent Skills open standard.
@@ -41,13 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## Public Release Checklist
+## Public Release Verification Summary
 
-Before tagging and publishing `v0.3.0`:
+The `v0.3.0` public release was verified and published on 2026-11-12:
 
-- [ ] All unit, integration, and benchmark tests pass across Python 3.11, 3.12, 3.13, and 3.14 on Linux and Windows.
-- [ ] Public `npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt` succeeds in clean consumer project.
-- [ ] Working tree is clean and `main` branch contains all verified fixes.
-- [ ] GitHub release notes correspond to `[0.3.0]` changelog entry.
-- [ ] Maintainer approval obtained before pushing git tags or publishing packages.
+- [x] All unit, integration, and benchmark tests pass across Python 3.11, 3.12, 3.13, and 3.14 on Linux and Windows.
+- [x] Public `npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt` succeeds in clean consumer project across Antigravity, Claude Code, and Codex.
+- [x] Working tree is clean and `main` branch contains all verified fixes (PR #5 merged at `489eaf2`).
+- [x] GitHub release `v0.3.0` published with release notes matching `[0.3.0]`.
 

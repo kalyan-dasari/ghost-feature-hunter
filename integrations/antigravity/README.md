@@ -1,18 +1,22 @@
 # Google Antigravity Integration
 
-Install the `ghost-hunt` Agent Skill for Google Antigravity.
+Install and use the `ghost-hunt` Agent Skill with Google Antigravity.
 
 ---
 
 ## 1. Quick Install via Agent Skills CLI
 
-From your project root:
+From your project root (requires Node.js 22.20.0+):
 
 ```bash
+# Interactive selection
 npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt
+
+# Or direct non-interactive installation
+npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt -y --copy --agent antigravity
 ```
 
-When prompted, select **Google Antigravity**.
+The skill is installed to `.agents/skills/ghost-hunt/`.
 
 ---
 
@@ -46,6 +50,8 @@ Or trigger specific feature investigations:
 
 ```text
 /ghost-hunt investigate checkout
+/ghost-hunt investigate user-registration
+/ghost-hunt investigate payment-webhooks
 ```
 
 Or ask in natural language:
@@ -54,13 +60,13 @@ Or ask in natural language:
 "Investigate my checkout feature and verify whether order persistence works."
 ```
 
-Antigravity executes the investigation using its native tools (file reader, shell/terminal commands, browser tool).
+Antigravity executes the investigation using its native tools (file reader, shell/terminal commands, `curl`, browser tool).
 
 ---
 
 ## 4. Optional Advanced CLI Engine
 
-If you want deterministic CI/CD verification journeys using the Python CLI, install the package separately:
+If you want deterministic CI/CD verification journeys using the Python CLI, install the package separately (requires Python 3.11+):
 
 ```bash
 pip install "ghost-feature-hunter[all]"
