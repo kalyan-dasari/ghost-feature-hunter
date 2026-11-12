@@ -1,30 +1,72 @@
-# Security model
+# Security & Safety Model
 
-Ghost Feature Hunter inspects projects that may contain secrets, private data, or executable code. It is a developer tool, not a sandbox.
+Ghost Hunt inspects and verifies application features in environments that may contain sensitive data, credentials, and source code. It is an empirical developer tool and Agent Skill, not an unrestricted sandbox.
 
-## Defaults
+---
 
-- Discovery reads source files and parses Python syntax trees. It never imports application modules or runs commands found in project files.
-- HTTP checks default to GET and do not follow redirects. A non-read method runs only when `allow_writes` is `true` in `ghost-hunter.json` and the operator passes `--allow-writes`.
-- Targets must match the configured `base_url` or an entry in `allowed_hosts`. Loopback targets are permitted when no base URL is configured.
-- A project configured for `production` is blocked unless `production_approved` is true in config and `--approve-production` is passed. This is a guardrail, not a guarantee that a host is non-production.
-- Database checks currently support only file-backed SQLite and execute restricted SELECT queries guarded at the SQLite C-engine level via connection authorizer callbacks. Queries are limited to 1,000 returned rows. No migration, write, or destructive operation is offered.
-- Database path containment follows a strict 4-tier policy:
-  1. *Project-contained databases*: Permitted by default; must resolve within the project root.
-  2. *Temporary test databases*: Permitted automatically within system temporary directories (`tempfile.gettempdir()`) only in `development` and `test` environments; strictly rejected in `staging` and `production`.
-  3. *Approved external databases*: External database directories must be explicitly configured in `ghost-hunter.json` via `allowed_database_dirs`.
-  4. *Production databases*: Production environments require dual approval: `production_approved: true` in config AND `--approve-production` on the CLI.
-  Path traversals (`../../`) and symlink escapes outside allowed roots are blocked.
-- Report path containment strictly enforces project isolation by default. The `--force` flag controls file overwrite permission and never bypasses filesystem containment. Writing a report outside the project root requires the explicit `--allow-external-output` option. Overwriting an existing external report requires both `--allow-external-output` and `--force`.
-- Browser checks run in an isolated worker subprocess with OS-level process tree termination (Windows Job Objects / POSIX process groups) enforcing a configurable hard deadline. Unresponsive Playwright drivers or page hangs are terminated cleanly and return UNKNOWN. Browser checks require an explicit base URL, allow at most 25 actions per checkpoint, and block cross-origin requests. Mutating HTTP methods require both write approvals. Page scripts still execute and may have effects through read methods or unsupported browser channels; this is not a sandbox.
-- HTTP responses are capped at 2 MB. Reports omit request headers and request bodies. Common credentials and email addresses are redacted from textual evidence.
+## 1. The Four Operational Safety Levels
 
-## Limits
+Whether executed directly by an AI coding agent or through the optional Python CLI engine, Ghost Hunt strictly adheres to four operational tiers:
 
-Redaction is best effort and cannot identify every secret or personal detail. Avoid pointing checks at production data, use synthetic accounts, and review reports before sharing. HTTP adapters can reach services on hosts explicitly configured by the user. Reports are unsigned and can be edited; review the evidence and journey, and do not treat a report file alone as proof that a run occurred. Use disposable, isolated environments for these checks.
+### Level 1 — Source-Code Read-Only Inspection (Safe by default)
+- Static file reading, AST parsing, and test inspection.
+- Identifies routes, controllers, models, and test fixtures without importing or executing untrusted application code.
+- No side effects on the environment or code files.
 
-No automated payment, external notification, database write, or application-source modification is offered by the v0.1 verification engine.
+### Level 2 — Runtime Read-Only Checks (Safe in test environments)
+- Non-mutating HTTP methods (`GET`, `HEAD`, `OPTIONS`) to inspect endpoints and responses.
+- Read-only database queries (`SELECT` only). Queries are guarded at the SQLite C-engine level via connection authorizers and capped at 1,000 rows.
+- Permitted against local test and development targets matching configured `base_url` or `allowed_hosts`.
 
-## Reporting vulnerabilities
+### Level 3 — Runtime Mutating Operations (Requires User Authorization)
+- State-altering HTTP methods (`POST`, `PUT`, `PATCH`, `DELETE`) and browser form submissions.
+- **Requires explicit user authorization.** In the Python CLI, this requires both `"allow_writes": true` in `ghost-hunter.json` and `--allow-writes` on the command line.
+- Must execute against disposable, isolated test targets with synthetic data.
 
-Please report security issues privately to the repository maintainers before public disclosure. Do not include live credentials or personal data in issue reports. Maintainers should add a security contact address before publishing a release.
+### Level 4 — Database Write Operations (Strictly Isolated)
+- Direct database mutations (`INSERT`, `UPDATE`, `DELETE`, `DROP`).
+- **Strictly prohibited against production databases.**
+- Restricted to disposable temporary databases (e.g. SQLite test copies or test containers).
+- Must include explicit cleanup and re-seeding controls so test state from earlier runs does not contaminate subsequent verification outcomes.
+
+---
+
+## 2. Absolute Safety Guardrails
+
+### Production Protection
+- Any target environment configured as `production` is blocked by default.
+- In the Python CLI, production runs are aborted unless `production_approved: true` is configured and `--approve-production` is explicitly passed on the CLI.
+- AI agents in chat mode must block mutating actions against production systems.
+
+### Credential & Sensitive Data Redaction
+- Evidence logs automatically sanitize authorization headers (Bearer tokens, Basic auth), cookies, and API keys (`[REDACTED]`).
+- Fields matching common secret names (`password`, `secret`, `api_key`, `token`, `private_key`) are masked.
+- Email addresses and physical database file paths are masked in textual evidence.
+- HTTP response bodies are capped at 2 MB; payloads are not copied wholesale into reports.
+
+### No Code Modifications Without Approval
+- Ghost Hunt diagnoses defects and isolates root causes, but **never modifies application source code without explicit user authorization**.
+- Fixes are presented as minimal diffs with risk assessments.
+
+### Report Path Containment
+- Report generation strictly isolates files to the project root directory by default.
+- The `--force` flag controls file overwrite permission and **never** bypasses filesystem containment.
+- Writing reports outside the project root requires the explicit `--allow-external-output` flag. Overwriting an existing external file requires both `--allow-external-output` and `--force`.
+
+### Browser Worker Process Isolation
+- Browser checks execute in an isolated worker subprocess with OS-level process tree termination (Windows Job Objects / POSIX process groups) enforcing a configurable hard deadline (`timeout_seconds`).
+- Deadlocked or hung browser drivers are cleanly terminated and return **`UNKNOWN`** with actionable diagnostic information.
+
+---
+
+## 3. Limits & User Responsibilities
+
+- **Redaction is Best Effort:** Automatic redaction cannot guarantee detection of every proprietary string or secret. Never run verification journeys against production credentials.
+- **Reports are Unsigned:** Saved Markdown and JSON reports are plain text developer artifacts and can be edited. Always review the journey steps and captured evidence before sharing.
+- **Disposable Infrastructure:** When testing stateful flows (such as checkout, billing, or inventory), always point the agent or CLI to an isolated, disposable test database and ephemeral test server.
+
+---
+
+## 4. Reporting Security Issues
+
+Please report security issues privately to the repository maintainers before public disclosure. Do not include live credentials or sensitive personal data in issue reports.

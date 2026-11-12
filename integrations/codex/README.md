@@ -1,18 +1,22 @@
 # OpenAI Codex Integration
 
-Install the `ghost-hunt` Agent Skill for OpenAI Codex / OpenAI Agents.
+Install and use the `ghost-hunt` Agent Skill with OpenAI Codex.
 
 ---
 
 ## 1. Quick Install via Agent Skills CLI
 
-From your project root:
+From your project root (requires Node.js 22.20.0+):
 
 ```bash
+# Interactive selection
 npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt
+
+# Or direct non-interactive installation
+npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt -y --copy --agent codex
 ```
 
-When prompted, select **Codex / OpenAI Agents**.
+The skill is installed to `.agents/skills/ghost-hunt/`.
 
 ---
 
@@ -46,6 +50,8 @@ Or run an explicit feature investigation:
 
 ```text
 $ghost-hunt investigate checkout
+$ghost-hunt investigate user-registration
+$ghost-hunt investigate payment-processing
 ```
 
 Or ask in natural language:
@@ -60,7 +66,7 @@ Codex executes the investigation using its native sandbox tools, file reading, a
 
 ## 4. Optional Advanced CLI Engine
 
-If you want deterministic CI/CD verification journeys using the Python CLI, install the package separately:
+If you want deterministic CI/CD verification journeys using the Python CLI, install the package separately (requires Python 3.11+):
 
 ```bash
 pip install "ghost-feature-hunter[all]"

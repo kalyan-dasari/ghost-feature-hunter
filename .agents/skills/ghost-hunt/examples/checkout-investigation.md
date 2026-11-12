@@ -116,7 +116,7 @@ HTTP/1.1 201 Created
 ### Defect A: Double Tax Calculation (`cart-double-tax`)
 - **Observed:** `total_cents: 1200`
 - **Expected:** `total_cents: 1100`
-- **Location:** [`app.py:L83-L90`](file:///examples/broken-flask-shop/app.py#L83-L90)
+- **Location:** `app.py:L83-L90` (`examples/broken-flask-shop/app.py`)
 - **Root Cause:**
   In `app.py`, the tax computation adds tax twice to the subtotal:
   ```python
@@ -127,7 +127,7 @@ HTTP/1.1 201 Created
 ### Defect B: Missing Quantity Validation (`quantity-validation`)
 - **Observed:** Order placed with quantity `-1` (HTTP 201).
 - **Expected:** Rejected with HTTP 400.
-- **Location:** [`app.py:L142-L148`](file:///examples/broken-flask-shop/app.py#L142-L148)
+- **Location:** `app.py:L142-L148` (`examples/broken-flask-shop/app.py`)
 - **Root Cause:**
   The checkout route checks that `quantity` is an integer, but does not assert `quantity > 0`:
   ```python

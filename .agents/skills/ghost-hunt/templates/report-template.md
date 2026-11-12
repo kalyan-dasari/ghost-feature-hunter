@@ -35,7 +35,7 @@
 ### Defect 1: `<checkpoint_id>` — `<short_description>`
 - **Observed Behavior:** `<what actually happened>`
 - **Expected Behavior:** `<what was supposed to happen according to requirements>`
-- **Source Location:** [`<file_path>:<line_range>`](file:///<absolute_or_relative_path>#L10-L20)
+- **Source Location:** `<file_path>:<line_range>` (e.g. `src/api/checkout.py:L42-L55`)
 - **Root Cause Analysis:**
   `<Clear explanation of the exact code defect, missing commit, logic error, or race condition.>`
 - **Recommended Minimal Fix:**
