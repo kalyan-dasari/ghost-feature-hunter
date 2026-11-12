@@ -1,25 +1,65 @@
-# Adapter reference
+# Adapter & Tool Verification Reference
 
-Journeys are JSON. Each step names one adapter, states expected behavior, and provides explicit machine-checkable assertions. Unsupported assertions produce UNKNOWN; they are never silently ignored.
+Ghost Hunt supports verification through both **Native Agent Tools** (chat mode) and **Deterministic Adapters** (optional CLI mode).
 
-## HTTP
+---
 
-Settings: `method` (default GET), `url`, optional `headers`, `headers_env`, `params`, `json`, `timeout_seconds`, and `checks`. Checks support `status_code`, `json_equals` keyed by a dotted/list-index path, `json_exists`, and `text_contains`. Responses larger than 2 MB produce UNKNOWN. Request and response payloads are not copied wholesale into evidence. Write methods need both project and CLI approval.
+## 1. Native Agent Tool Mapping
 
-## Database
+When running in chat mode, coding agents map verification checks to their available native environment tools:
 
-Uses Python's standard-library SQLite driver; no ORM dependency is needed. A file-backed SQLite URL is supplied through `database_url_env` in config or a step. `query` must be one SELECT without comments or semicolons, complete within the configured query limit, and return at most 1,000 rows. `checks` supports `row_count_equals`, `row_count_at_least`, and `first_row_equals`. Use bound parameters via `parameters`; query results and database paths are not disclosed in evidence.
+| Verification Target | Native Agent Tools | Typical Command / Action | Safety Constraints |
+|---|---|---|---|
+| **API Endpoints** | `curl`, `httpx`, Python/Node scripts | `curl -s -i -X POST <url> -d '<json>'` | Mutating methods require user authorization. Response payloads sanitized. |
+| **Database Persistence** | `sqlite3` CLI, Python `sqlite3` script | `sqlite3 <db_path> "SELECT ..."` | Strictly read-only queries during audits. Stateful tests use isolated temporary databases. |
+| **Frontend / DOM Flow** | Agent browser tool, Playwright scripts | Click buttons, fill inputs, assert DOM text | Mutating browser actions require user authorization. |
+| **Unit & Integration Tests** | `pytest`, `npm test`, `go test` | Run feature test files directly | Read-only test execution. |
 
-Database files must be contained within allowed roots:
-- The project root directory.
-- Temporary directories (`tempfile.gettempdir()`) in `development` and `test` environments only.
-- Explicitly configured directories in `allowed_database_dirs` in `ghost-hunter.json`.
-- Production targets require `production_approved: true` in config and `--approve-production` on CLI.
+---
 
-## Browser
+## 2. Deterministic CLI Adapter Reference
 
-Requires Playwright and its Chromium binary (`pip install ".[browser]"`), plus `base_url`. Browser verification executes in an isolated worker subprocess with OS-level process tree termination (Windows Job Objects / POSIX process groups) enforcing a configurable hard deadline (`timeout_seconds`), terminating unresponsive workers with `UNKNOWN`. `actions` supports `goto`, `click`, `fill`, `expect_visible`, `expect_text`, `expect_url_contains`, and `wait_for_network_idle`. Each step needs an explicit page or response assertion. Browser requests are restricted to the configured origin, and mutating HTTP methods require both write approvals. The adapter does not record screenshots. Page scripts still execute, so browser checks are not a sandbox.
+For automated JSON journeys (`journeys/<feature>.json`), the optional Python CLI dispatches checkpoints to dedicated adapters conforming to `ghost_hunter.adapters.base.BaseAdapter`.
 
-## Deferred after v0.1
+### HTTP Adapter (`adapter: "http"`)
+- **Settings:**
+  - `method`: HTTP method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`). Default: `GET`.
+  - `url`: Relative or absolute URL. Resolves against configured `base_url`.
+  - `headers` / `headers_env`: Request headers or environment variable providing headers.
+  - `params`: URL query parameters.
+  - `json`: Request body payload.
+  - `timeout_seconds`: Request timeout (default: 10.0s).
+  - `checks`: List of assertions:
+    - `status_code`: Expected integer status code (e.g. 200, 201, 400).
+    - `json_equals`: Dotted path key match (`{"key": "total_cents", "value": 1100}`).
+    - `json_exists`: Asserts key presence.
+    - `text_contains`: Asserts string substring in response text.
+- **Safety Gates:**
+  - Write methods (`POST`, `PUT`, `DELETE`, `PATCH`) require both `"allow_writes": true` in `ghost-hunter.json` and `--allow-writes` on CLI.
+  - Responses capped at 2 MB; exceeding 2 MB returns `UNKNOWN`.
+  - Sensitive auth headers and credentials redacted from evidence.
 
-Test-suite execution needs a dedicated isolation design; a zero exit code alone can be misleading when no tests ran. A log phrase can be stale and does not establish a current runtime outcome. Neither adapter contributes to v0.1 verification status.
+### Database Adapter (`adapter: "database"`)
+- **Settings:**
+  - `query`: A single SQL SELECT query without comments or semicolons.
+  - `parameters`: Bound parameters dictionary for parameterized queries.
+  - `database_url_env`: Environment variable containing the database URL (default: `sqlite:///<path>`).
+  - `checks`:
+    - `row_count_equals`: Exact row count assertion.
+    - `row_count_at_least`: Minimum row count assertion.
+    - `first_row_equals`: Key-value assertions on the first returned record.
+- **Safety Gates:**
+  - Standard library SQLite with C-level query authorizer callback (`sqlite3.Connection.set_authorizer`).
+  - Rejects comments, multiple statements, and any non-SELECT operation (`INSERT`, `UPDATE`, `DELETE`, `DROP`).
+  - Result sets capped at 1,000 rows.
+  - 4-tier path containment prevents directory traversal and unauthorized filesystem access.
+
+### Browser Adapter (`adapter: "browser"`)
+- **Settings:**
+  - `actions`: Ordered list of browser actions (`goto`, `click`, `fill`, `expect_visible`, `expect_text`, `expect_url_contains`, `wait_for_network_idle`).
+  - Requires Playwright Chromium binary (`pip install "ghost-feature-hunter[browser]"`).
+- **Safety Gates:**
+  - Isolated worker subprocess with OS-level process tree termination (Windows Job Objects / POSIX process groups) enforcing hard timeout deadlines.
+  - Restricted to configured origin; cross-origin navigations blocked.
+  - Mutating actions require write approval.
+  - Unresponsive browser workers return `UNKNOWN` with actionable diagnostics.

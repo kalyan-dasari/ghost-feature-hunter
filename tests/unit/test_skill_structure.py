@@ -89,3 +89,31 @@ def test_skills_and_agents_skills_mirror_are_synchronized():
             assert canonical_file.is_file(), f"Orphan file in .agents mirror not in canonical: {rel_path}"
 
 
+def test_all_documentation_relative_links_resolve():
+    """Verify that all relative markdown links across documentation resolve to existing files."""
+    docs_to_check = [
+        REPO_ROOT / "README.md",
+        REPO_ROOT / "CHANGELOG.md",
+        REPO_ROOT / "docs" / "installation.md",
+        REPO_ROOT / "docs" / "safety.md",
+        REPO_ROOT / "docs" / "architecture.md",
+        REPO_ROOT / "docs" / "adapters.md",
+    ] + list(SKILL_DIR.rglob("*.md"))
+
+    broken = []
+    for doc in docs_to_check:
+        if not doc.is_file():
+            continue
+        text = doc.read_text(encoding="utf-8")
+        links = re.findall(r"\[(?:[^\]]*)\]\(([^)]+)\)", text)
+        for link in links:
+            target = link.strip().split("#")[0]
+            if not target or target.startswith(("http://", "https://", "mailto:")):
+                continue
+            resolved = (doc.parent / target).resolve()
+            if not resolved.exists():
+                broken.append(f"{doc.relative_to(REPO_ROOT)}: broken link '{link}' -> {resolved}")
+
+    assert not broken, f"Broken documentation links found:\n" + "\n".join(broken)
+
+
