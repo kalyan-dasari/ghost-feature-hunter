@@ -50,3 +50,4 @@ Before tagging and publishing `v0.3.0`:
 - [ ] Working tree is clean and `main` branch contains all verified fixes.
 - [ ] GitHub release notes correspond to `[0.3.0]` changelog entry.
 - [ ] Maintainer approval obtained before pushing git tags or publishing packages.
+
