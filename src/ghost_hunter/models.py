@@ -35,6 +35,7 @@ class JourneyStep(StrictModel):
     checkpoint: str = Field(min_length=1)
     adapter: AdapterName
     expected_behavior: str = Field(min_length=1)
+    source_of_expectation: str = Field(default="user_requirement")
     settings: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -61,6 +62,7 @@ class EvidenceItem(StrictModel):
 
 
 class CheckResult(StrictModel):
+    run_id: str = Field(default="")
     feature: str
     checkpoint_id: str
     checkpoint: str
@@ -68,10 +70,14 @@ class CheckResult(StrictModel):
     actual_observation: str
     status: Status
     evidence: list[EvidenceItem] = Field(default_factory=list)
+    source_of_expectation: str = Field(default="user_requirement")
     timestamp: datetime = Field(default_factory=utc_now)
     reproducibility: str
     confidence_rationale: str
+    adapter_name: str = Field(default="")
+    adapter_version: str = Field(default="")
     duration_ms: int = Field(ge=0)
+    limitations: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def observed_results_need_evidence(self) -> "CheckResult":
@@ -90,6 +96,7 @@ class ReportSummary(StrictModel):
 class AuditReport(StrictModel):
     schema_version: str = "1.0"
     tool_version: str
+    run_id: str = Field(default="")
     project_path: str
     generated_at: datetime = Field(default_factory=utc_now)
     results: list[CheckResult]
@@ -114,17 +121,30 @@ class AuditReport(StrictModel):
         project_path: Path,
         results: list[CheckResult],
         limitations: list[str] | None = None,
+        run_id: str | None = None,
     ) -> "AuditReport":
-        results = list(results)
+        import uuid
+
+        active_run_id = run_id or f"run-{uuid.uuid4().hex[:12]}"
+        updated_results: list[CheckResult] = []
+        for r in results:
+            if not r.run_id:
+                r_dict = r.model_dump()
+                r_dict["run_id"] = active_run_id
+                updated_results.append(CheckResult.model_validate(r_dict))
+            else:
+                updated_results.append(r)
+
         return cls(
             tool_version=_tool_version(),
+            run_id=active_run_id,
             project_path=str(project_path.resolve()),
-            results=results,
+            results=updated_results,
             summary=ReportSummary(
-                total=len(results),
-                pass_count=sum(r.status is Status.PASS for r in results),
-                fail_count=sum(r.status is Status.FAIL for r in results),
-                unknown_count=sum(r.status is Status.UNKNOWN for r in results),
+                total=len(updated_results),
+                pass_count=sum(r.status is Status.PASS for r in updated_results),
+                fail_count=sum(r.status is Status.FAIL for r in updated_results),
+                unknown_count=sum(r.status is Status.UNKNOWN for r in updated_results),
             ),
             limitations=limitations or [],
         )
