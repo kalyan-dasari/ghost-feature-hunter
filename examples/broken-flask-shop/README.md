@@ -29,7 +29,7 @@ The scoring labels are in `benchmark-manifest.json`. Ghost Feature Hunter does n
 From the repository root:
 
 ```console
-python -m pip install -e ".[demo,database,browser,dev]"
+python -m pip install -e ".[dev,demo,browser]"
 python -m playwright install chromium
 ```
 

@@ -2,11 +2,23 @@
 
 Ghost Feature Hunter checks whether a feature journey matches explicit, observable expectations. Its Python CLI runs independently of AI agents and produces evidence-backed JSON and Markdown reports.
 
-**Status: alpha, v0.1.0.** This release is a working verification engine and demonstration project, not a claim of production readiness. Discovery support currently targets Flask-style Python routes. Assertions cover only the journey that was actually run.
+**Status: beta, v0.2.0.** Ghost Feature Hunter is an open-source verification engine and standard Agent Skill. It validates software features against explicit, human-authored behavioral journeys across frontend, API, persistence, and delivery layers.
 
 ## Install
 
-Python 3.11 or newer is required. Install the lightweight CLI:
+### 1. Install as an AI Agent Skill (Antigravity, Claude Code, Codex)
+
+Using the Agent Skills open standard CLI:
+
+```console
+npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-feature-hunter
+```
+
+Or copy `skills/ghost-feature-hunter/` to your agent's skill directory (`.agents/skills/` or `.claude/skills/`).
+
+### 2. Install the Independent Python CLI
+
+Python 3.11 or newer is required:
 
 ```console
 python -m venv .venv
@@ -19,8 +31,8 @@ Install optional capabilities only when needed:
 ```console
 python -m pip install ".[browser]"     # Playwright package
 python -m playwright install chromium  # Browser binary, installed separately
-python -m pip install ".[demo]"        # Broken Flask shop
-python -m pip install ".[dev,demo,browser]"  # contributors and full demo
+python -m pip install ".[demo]"        # Broken Flask shop benchmark
+python -m pip install ".[dev,demo,browser]"  # Contributors and full test suite
 ```
 
 ## Quick start

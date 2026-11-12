@@ -9,7 +9,7 @@ from urllib.parse import urlsplit, urlunsplit
 _EMAIL = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 _BEARER = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+")
 _ASSIGNMENT = re.compile(
-    r"(?i)\b(password|passwd|secret|token|api[_-]?key|authorization|cookie)"
+    r"(?i)\b(password|passwd|secret|token|api[_-]?key|cookie)"
     r"(\s*[:=]\s*)([^\s,;&]+)"
 )
 _SENSITIVE_KEY = re.compile(r"(?i)(password|passwd|secret|token|api[_-]?key|authorization|cookie)")
@@ -18,6 +18,11 @@ _SENSITIVE_KEY = re.compile(r"(?i)(password|passwd|secret|token|api[_-]?key|auth
 def redact_text(value: str, limit: int = 1000) -> str:
     safe = _BEARER.sub("Bearer [REDACTED]", value)
     safe = _ASSIGNMENT.sub(lambda match: f"{match.group(1)}{match.group(2)}[REDACTED]", safe)
+    safe = re.sub(
+        r"(?i)\b(authorization\s*[:=]\s*)(?:Basic\s+[A-Za-z0-9+/=]+|(?!Bearer\s+\[REDACTED\])[^\s,;&]+)",
+        r"\g<1>[REDACTED]",
+        safe,
+    )
     safe = _EMAIL.sub("[REDACTED_EMAIL]", safe)
     return safe[:limit]
 
