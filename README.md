@@ -10,13 +10,13 @@ Instead of assuming a feature works because its code looks plausible, Ghost Hunt
 
 ## ⚡ Quick Install
 
-Install the canonical Agent Skill directly into your agent with one command:
+Install the canonical Agent Skill directly into your agent with one command (requires Node.js 18+):
 
 ```console
 npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt
 ```
 
-The CLI will prompt you to select your agent:
+The CLI will prompt you to select your target agent:
 - **Google Antigravity** (`.agents/skills/ghost-hunt/`)
 - **Anthropic Claude Code** (`.claude/skills/ghost-hunt/`)
 - **OpenAI Codex** (`.agents/skills/ghost-hunt/`)
@@ -136,7 +136,7 @@ ghost-feature-hunter/
 │   └── reporting/                   # JSON and Markdown report rendering
 ├── examples/broken-flask-shop/      # 15-defect benchmark application
 ├── integrations/                    # Platform integration guides (Antigravity, Claude, Codex)
-└── tests/                           # 47 unit, integration, and benchmark tests
+└── tests/                           # Unit, integration, and benchmark test suites
 ```
 
 ---

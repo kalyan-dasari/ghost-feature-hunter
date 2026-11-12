@@ -133,13 +133,19 @@ Deliver a structured Markdown audit report:
 
 ---
 
-## Safety Defaults & Guardrails
+## Safety Defaults & Operation Categories
 
-1. **Read-Only Defaults:** Never execute mutating HTTP methods (`POST`, `PUT`, `DELETE`) or database writes against non-isolated environments without explicit user approval.
-2. **Production Protection:** Never run checks against production targets without explicit user confirmation.
-3. **Database Guardrails:** Always use read-only SELECT queries; never run UPDATE, DELETE, or DROP during an investigation.
-4. **Credential Redaction:** Automatically redact passwords, API keys, Bearer tokens, and personal email addresses from evidence logs.
-5. **No Code Edits Without Approval:** Always present proposed fixes for user approval before modifying code.
+Ghost Hunt categorizes every verification action into four explicit safety levels:
+
+1. **Source-Code Read-Only Inspection:** Safe. Parsing files, AST, and configurations. Never imports or runs untrusted application code.
+2. **Runtime GET / Read-Only Checks:** Safe in test environments. Non-mutating HTTP methods (`GET`, `HEAD`, `OPTIONS`) and read-only `SELECT` queries.
+3. **Runtime Mutating Operations:** State-altering HTTP methods (`POST`, `PUT`, `PATCH`, `DELETE`) and browser clicks/submits. **Requires explicit user authorization.** Must use synthetic test data.
+4. **Database Write Operations:** Direct database mutations (`INSERT`, `UPDATE`, `DELETE`, `DROP`). Strictly prohibited during read-only audits. When benchmarking stateful flows, always execute against disposable temporary databases; clean up and reseed to prevent previous run contamination.
+
+### Absolute Safety Guardrails:
+- **Production Guardrail:** Block all checks against production environments unless explicit user authorization is provided.
+- **Credential Redaction:** Automatically redact passwords, API keys, Bearer tokens, and personal email addresses from evidence logs.
+- **No Code Edits Without Approval:** Always present proposed fixes for user approval before modifying code.
 
 ---
 

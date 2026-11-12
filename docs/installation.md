@@ -9,7 +9,7 @@ You can install the Agent Skill into your coding agent with a single command and
 ## 1. Install the Agent Skill (`ghost-hunt`)
 
 ### One-Line Install via Agent Skills CLI
-Install the skill into your current project or user profile:
+Install the skill into your current project or user profile (requires Node.js 18+):
 
 ```console
 npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt

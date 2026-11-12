@@ -12,3 +12,5 @@ ghost-reports/
 examples/broken-flask-shop/instance/
 *.sqlite
 *.sqlite3
+.claude/
+skills-lock.json

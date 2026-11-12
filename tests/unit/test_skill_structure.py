@@ -60,3 +60,32 @@ def test_agent_integration_documents_exist():
         text = readme.read_text(encoding="utf-8")
         assert "ghost-hunt" in text, f"Integration guide {agent} must reference 'ghost-hunt'"
 
+
+def test_skills_and_agents_skills_mirror_are_synchronized():
+    agents_skill_dir = REPO_ROOT / ".agents" / "skills" / "ghost-hunt"
+    if not agents_skill_dir.exists():
+        return
+
+    # Check all canonical files exist in .agents copy
+    for canonical_file in SKILL_DIR.rglob("*"):
+        if canonical_file.is_file():
+            rel_path = canonical_file.relative_to(SKILL_DIR)
+            mirror_file = agents_skill_dir / rel_path
+            assert mirror_file.is_file(), f"Mirror file missing in .agents: {rel_path}"
+            if canonical_file.suffix.lower() in {".md", ".json", ".txt", ".yml", ".yaml"}:
+                assert canonical_file.read_text(encoding="utf-8").splitlines() == (
+                    mirror_file.read_text(encoding="utf-8").splitlines()
+                ), f"Content divergence between canonical skill and .agents mirror: {rel_path}"
+            else:
+                assert canonical_file.read_bytes() == mirror_file.read_bytes(), (
+                    f"Content divergence between canonical skill and .agents mirror: {rel_path}"
+                )
+
+    # Check no extra orphan files in .agents copy
+    for mirror_file in agents_skill_dir.rglob("*"):
+        if mirror_file.is_file():
+            rel_path = mirror_file.relative_to(agents_skill_dir)
+            canonical_file = SKILL_DIR / rel_path
+            assert canonical_file.is_file(), f"Orphan file in .agents mirror not in canonical: {rel_path}"
+
+
