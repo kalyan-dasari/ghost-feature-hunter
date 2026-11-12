@@ -61,3 +61,4 @@ Follow the principle of surgical intervention:
 3. **Show Before & After Code Blocks:** Present the exact proposed diff clearly to the user.
 4. **Strict Authorization Gate:** **NEVER edit code files without explicit user consent.** Always ask:
    > "I have identified the root cause in `app.py:L84`. Would you like me to apply this minimal fix?"
+

@@ -93,3 +93,4 @@ ghost-hunter report ghost-reports/ghost-report.json --output /external/report.md
 | Ad-hoc debugging of a specific broken endpoint | **Native Agent Tools** (`curl`, inline test script) |
 | CI/CD automated regression gate on PRs | **Optional CLI Engine** (`ghost-hunter audit checkout`) |
 | Strict compliance / machine-validated JSON artifacts | **Optional CLI Engine** (Generates schema-validated reports) |
+

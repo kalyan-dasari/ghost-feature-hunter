@@ -62,3 +62,4 @@ When delivering results directly in chat, use this compact, high-signal format:
 
 ### Format B: Full Markdown Audit Report
 For long-form artifacts or saved reports, use [templates/report-template.md](../templates/report-template.md).
+

@@ -193,3 +193,4 @@ Upon user approval, the fix is applied and both checkpoints are re-tested:
 
 **Conclusion:** Both defects (`cart-double-tax` and `quantity-validation`) were confirmed with empirical evidence, isolated to exact line numbers in `app.py`, corrected with minimal diffs, and verified through regression checks.
 ```
+

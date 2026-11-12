@@ -86,3 +86,4 @@ If running via `ghost-hunter audit`, define the journey in JSON conforming to `s
 - Adapter must be one of `http`, `database`, `browser`.
 - Mutating actions require explicit write permissions.
 - Never overwrite existing journey files without user approval.
+

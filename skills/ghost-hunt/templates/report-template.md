@@ -66,3 +66,4 @@ curl -s -i "http://127.0.0.1:8000/api/checkout"
 # Checkpoint 2: Database Check
 sqlite3 data/app.sqlite3 "SELECT stock FROM products WHERE id = 1;"
 ```
+

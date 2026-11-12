@@ -157,3 +157,4 @@ Verify how the feature behaves under adverse, invalid, or boundary conditions:
    - Assert: Request rejected with `HTTP 400 Out of stock`; inventory is NOT modified; no order is created.
 3. **Transaction Rollback:** If payment gateway simulation fails or an exception occurs halfway through order creation:
    - Assert: Entire database transaction rolls back; no orphan rows in `orders` or `order_items`.
+

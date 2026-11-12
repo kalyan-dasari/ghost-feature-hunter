@@ -59,3 +59,4 @@ def test_agent_integration_documents_exist():
         assert readme.is_file(), f"Missing integration guide for {agent}: {readme}"
         text = readme.read_text(encoding="utf-8")
         assert "ghost-hunt" in text, f"Integration guide {agent} must reference 'ghost-hunt'"
+
