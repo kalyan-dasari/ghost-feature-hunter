@@ -1,57 +1,164 @@
 ---
 name: ghost-feature-hunter
-description: Verifies software feature journeys across UI, API, persistence, and delivery with the Ghost Feature Hunter CLI. Use when checking whether a feature actually works.
-compatibility: Requires the ghost-hunter CLI for automated checks. Optional browser, database, test-suite, and log checks require their configured runtimes and access.
+description: Evidence-backed verification of software feature journeys across UI, API, persistence, and delivery. Use when checking whether a feature actually works end-to-end.
+compatibility: Requires Python 3.11+ and the ghost-hunter CLI. Optional browser checks require Playwright and Chromium.
 metadata:
   author: Ghost Feature Hunter contributors
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # Ghost Feature Hunter
 
-Use the local Ghost Feature Hunter engine to verify an explicitly defined feature journey. The CLI works independently of this skill. The skill helps inspect scope, select checks, interpret evidence, and explain limitations.
+> **DON'T TRUST THE FEATURE. VERIFY IT.**
 
-## Investigation workflow
+Ghost Feature Hunter is an independent feature verification engine and Agent Skill. It validates software features against explicit, human-authored behavioral journeys across frontend, API, persistence, and delivery layers.
 
-1. **Understand the requested feature.** Restate the user-visible outcome and boundaries. Identify which user, account, and environment are in scope.
-2. **Inspect the repository.** Read the relevant source, documentation, existing tests, and journey files. Use `ghost-hunter discover --project-root <path>` for implemented static Flask discovery. Do not import application files or run shell commands copied from project files.
-3. **Establish expected behavior.** Prefer acceptance criteria, product documentation, API contracts, and explicit tests. Record the source of each expectation. If a behavior is inferred or sources disagree, label it as a proposal and ask the user to validate it before putting it in a journey as an expected result.
-4. **Check what can actually be observed.** Inspect `ghost-hunter --help`, the project config, installed extras, URLs, environment variables, and available test data. Do not imply that a database, browser, log, authenticated account, or external service is reachable unless the current environment demonstrates it.
-5. **Select or prepare a journey.** Use an existing validated JSON journey when possible. A journey step must state an explicit expected behavior and executable assertion. Never use discovery output alone as an expectation. If no journey exists, propose the checkpoint list and obtain validation for assumptions. Do not modify application source code without the user's explicit permission.
-6. **Choose a safe target.** Prefer isolated development/test environments and synthetic data. Read the project's `ghost-hunter.json` and `docs/safety.md`. Production requires explicit config and CLI approval; write-capable HTTP and test checks require both `allow_writes: true` and `--allow-writes`. If those conditions are not met, leave the check unexecuted and report UNKNOWN.
-7. **Run the CLI.** Typical commands:
+---
 
-   ```console
-   ghost-hunter discover --project-root <project>
-   ghost-hunter audit <feature> --project-root <project>
-   ```
+## The Three-Status Truth Table
 
-   Use `--journey <file>` for a non-default journey. Use the write or production approval flags only when the user has explicitly authorized that target and action.
+The engine classifies every observation into exactly one of three states. Never deviate from this logic:
 
-8. **Inspect the evidence.** Read both `ghost-report.json` and `ghost-report.md`. Confirm the feature, checkpoint, assertion, timestamp, evidence reference, and limitations. A CLI exit code is not a substitute for reading the report. Reports are unsigned and editable; a pre-existing report alone does not prove a run occurred. Claim a current PASS or FAIL only after running the CLI in this investigation and reviewing its resulting evidence.
-9. **Classify honestly.** Use only the engine's three statuses:
-   - **PASS:** the configured assertion ran and matched the observed behavior.
-   - **FAIL:** an observation contradicted an explicit expected behavior.
-   - **UNKNOWN:** a prerequisite, permission, runtime, or reliable observation was unavailable.
+| Status | Verification Meaning | Permissible Interpretation |
+|---|---|---|
+| **`PASS`** | The configured assertion executed and matched observed behavior. | Proves **only** the executed assertion. Never infer unasserted behavior. |
+| **`FAIL`** | An observation directly contradicted an explicit expected behavior. | Proves the feature broke at this checkpoint. |
+| **`UNKNOWN`** | Prerequisites, runtimes, permissions, or evidence were unavailable. | **Never relabel as PASS or FAIL.** Unverified or ambiguous check. |
 
-   Never relabel UNKNOWN as PASS or FAIL. Never say a check passed if it was not executed. Separate findings from hypotheses.
+---
 
-10. **Investigate failures.** Trace the failed checkpoint through the relevant UI, route/controller, service, persistence, and tests. Cite the local file and line when available. Keep root-cause claims proportional to the code and runtime evidence; describe suspected causes as hypotheses.
-11. **Suggest targeted fixes.** Explain the smallest fix that addresses the observed behavior and add a regression assertion. Ask before changing application source code. Journey or report changes must also be reviewable and consistent with user-approved expectations.
-12. **Rerun after a fix.** Re-run the affected journey in the same isolated environment and compare the new report. Preserve the failed report if the user needs an audit trail; use the CLI's overwrite controls deliberately.
-13. **Report concisely.** Summarize the feature scope, PASS/FAIL/UNKNOWN counts, actionable failures with evidence, checks that could not run, and the next step. Do not claim complete end-to-end coverage beyond the journey actually executed.
+## Workflow Selector & Decision Tree
 
-## Capability boundaries
+Follow this decision tree to select the appropriate workflow for your task:
 
-- The engine currently discovers Flask-style Python routes and common SQLAlchemy model patterns statically. Discovery is advisory and never establishes runtime success. Do not claim support for other frameworks based only on their file names.
-- HTTP checks require an explicitly configured target and host policy. A remote service is not reachable merely because its URL appears in source.
-- Database checks require a configured environment variable, a file-backed SQLite database, and a safe SELECT assertion.
-- Browser checks require Playwright, Chromium, an explicit base URL, and an accessible same-origin app.
-- v0.1 supports HTTP, SQLite, and browser checks. Test-suite execution and log phrase checks are deferred.
-- Redaction is best effort. Inspect reports before sharing them, especially when the target returned personal or secret data.
+```text
+Starting an investigation?
+│
+├── 1. Unfamiliar codebase or unmapped endpoints?
+│   └── Follow: Workflow 1 (Discovery) & Workflow 2 (Feature Understanding)
+│
+├── 2. Requirements or acceptance criteria ambiguous?
+│   └── Follow: Workflow 3 (Requirement & Acceptance-Criteria Analysis)
+│
+├── 3. No journey definition exists yet?
+│   └── Follow: Workflow 4 (Journey Generation) & Workflow 5 (Journey Validation)
+│
+├── 4. Ready to execute verification?
+│   ├── Testing HTTP endpoints/contracts? ───────> Workflow 6 (API Verification)
+│   ├── Testing DOM/browser interactions? ───────> Workflow 7 (Browser Verification)
+│   ├── Testing database records/rollback? ──────> Workflow 8 (Database Verification)
+│   ├── Testing roles/tenancy/auth tokens? ──────> Workflow 9 (Authorization Verification)
+│   └── Testing bad inputs/error paths? ─────────> Workflow 10 (Error-Path Verification)
+│
+├── 5. Audit produced FAIL checkpoints?
+│   └── Follow: Workflow 11 (Root-Cause Investigation)
+│
+└── 6. Approved fix applied?
+    └── Follow: Workflow 12 (Regression Verification) -> Workflow 13 & 14 (Reporting)
+```
 
-## Reference guides
+For detailed adapter selection rules and safety gate logic, consult [references/decision-tree.md](references/decision-tree.md).
 
-- [Investigation workflow details](references/investigation.md)
-- [Evidence and status rules](references/evidence-rules.md)
-- [Report interpretation](references/reporting.md)
+---
+
+## The 14 Verification Workflows
+
+### 1. Feature Discovery
+Inspect the codebase to identify literal routes, database models, test files, and frontend components without executing application code:
+```console
+ghost-hunter discover --project-root <path>
+```
+*Details in [references/discovery-understanding.md](references/discovery-understanding.md).*
+
+### 2. Feature Understanding
+Trace data flow backwards from frontend action -> route -> controller -> business logic -> database -> response. Identify state transitions and integration boundaries.  
+*Details in [references/discovery-understanding.md](references/discovery-understanding.md).*
+
+### 3. Requirement & Acceptance-Criteria Analysis
+Classify expectations by source:
+1. `user_requirement`: Explicit prompt constraints.
+2. `product_documentation`: Specifications in README or docs.
+3. `api_contract`: Formal schema or endpoint contract.
+4. `existing_test`: Assertions from passing test suites.
+5. `inferred_assumption`: Hypothesized behavior (must be approved before execution).  
+*Details in [references/discovery-understanding.md](references/discovery-understanding.md).*
+
+### 4. Journey Generation
+Draft an explicit journey JSON file containing discrete checkpoints. Never overwrite an existing journey without approval.  
+*Details in [references/journey-generation.md](references/journey-generation.md).*
+
+### 5. Journey Validation
+Validate proposed journeys against `schemas/journey.schema.json`. Verify step ID uniqueness, adapter names, and assertion syntax.  
+*Details in [references/journey-generation.md](references/journey-generation.md).*
+
+### 6. API Verification (`adapter: "http"`)
+Assert against HTTP status codes, JSON paths (`json_equals`, `json_exists`), and text phrases using HTTPX.  
+*Details in [references/verification-adapters.md](references/verification-adapters.md).*
+
+### 7. Browser Verification (`adapter: "browser"`)
+Execute same-origin UI actions (`goto`, `click`, `fill`, `expect_visible`, `expect_text`) using headless Chromium.  
+*Details in [references/verification-adapters.md](references/verification-adapters.md).*
+
+### 8. Database Verification (`adapter: "database"`)
+Verify persistence using read-only SELECT queries on SQLite. Protected by native SQLite authorizer and project root jailing.  
+*Details in [references/verification-adapters.md](references/verification-adapters.md).*
+
+### 9. Authorization Verification
+Test authentication boundaries, expired tokens (expect 401), insufficient roles (expect 403), and tenant isolation (User A cannot read User B's order).  
+*Details in [references/verification-adapters.md](references/verification-adapters.md).*
+
+### 10. Error-Path Verification
+Verify system behavior under failure: missing required fields (expect 400), repeated idempotency keys (expect 409), and partial transaction rollbacks.  
+*Details in [references/verification-adapters.md](references/verification-adapters.md).*
+
+### 11. Root-Cause Investigation
+When an audit fails, trace the failure through source code. Cite exact file and line references. Distinguish confirmed facts from working hypotheses. Propose the minimal targeted fix. Never modify source code without user authorization.  
+*Details in [references/investigation.md](references/investigation.md).*
+
+### 12. Regression Verification
+After an approved fix is applied, rerun the affected journey with `--force`. Compare before-and-after reports to confirm resolution and ensure no adjacent workflows broke.  
+*Details in [references/regression-verification.md](references/regression-verification.md).*
+
+### 13. Evidence Analysis
+Inspect raw observations, UTC timestamps, redacted payloads, and reproducibility commands in `ghost-report.json`.  
+*Details in [references/evidence-and-reporting.md](references/evidence-and-reporting.md).*
+
+### 14. Report Generation
+Render clean Markdown summaries from JSON reports:
+```console
+ghost-hunter report ghost-reports/ghost-report.json --force
+```
+*Details in [references/evidence-and-reporting.md](references/evidence-and-reporting.md).*
+
+---
+
+## Core Operational Commands
+
+```console
+# 1. Initialize configuration and sample health journey
+ghost-hunter init --project-root .
+
+# 2. Advisory static discovery of routes and models
+ghost-hunter discover --project-root .
+
+# 3. Execute feature verification journey
+ghost-hunter audit <feature> --project-root .
+
+# 4. Mutating actions require explicit write approval
+ghost-hunter audit <feature> --project-root . --allow-writes
+
+# 5. Render Markdown report from existing JSON report
+ghost-hunter report ghost-reports/ghost-report.json --force
+```
+
+---
+
+## Safety Defaults & Guardrails
+
+- **Read-Only Defaults:** Mutating HTTP methods (`POST`, `PUT`, `DELETE`) and browser interactions (`click`, `fill`) are blocked unless `allow_writes: true` in config AND `--allow-writes` on CLI.
+- **Production Guardrail:** Targets configured as `production` are blocked unless `production_approved: true` in config AND `--approve-production` on CLI.
+- **Database Jailing:** SQLite connections are strictly read-only and denied access to paths outside the project root.
+- **Automatic Redaction:** Passwords, API tokens, Bearer tokens, and emails are redacted from all evidence output.
+- **Not a Sandbox:** The tool verifies real systems; run checks in isolated environments with synthetic test data.
+
+For troubleshooting and common error remedies, consult [references/troubleshooting.md](references/troubleshooting.md).
