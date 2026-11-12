@@ -149,6 +149,9 @@ def report(
     report_json: Path = typer.Argument(..., help="Existing Ghost Hunter JSON report."),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Markdown destination."),
     force: bool = typer.Option(False, "--force", help="Replace an existing Markdown report."),
+    allow_external_output: bool = typer.Option(
+        False, "--allow-external-output", help="Permit writing report outside the project root."
+    ),
 ) -> None:
     """Render Markdown from a previously generated JSON report."""
     try:
@@ -157,8 +160,25 @@ def report(
         destination = output or report_json.with_name("ghost-report.md")
         resolved_dest = destination.resolve()
         project_root = Path(audit_report.project_path).resolve()
-        if output and resolved_dest != project_root and project_root not in resolved_dest.parents and not force:
-            raise ValueError(f"Output destination must remain within the project root ({project_root}); pass --force to override.")
+
+        is_contained = resolved_dest == project_root or project_root in resolved_dest.parents
+        if output and not is_contained and not allow_external_output:
+            raise ValueError(
+                f"Refusing to write report outside project root ({project_root}) to {resolved_dest}. "
+                "Pass --allow-external-output to permit writing outside the project root."
+            )
+
+        check_path = destination
+        while check_path != check_path.parent:
+            if check_path.is_symlink():
+                target = check_path.resolve()
+                if (target != project_root and project_root not in target.parents) and not allow_external_output:
+                    raise ValueError(
+                        f"Refusing to write through symlink {check_path} escaping project root. "
+                        "Pass --allow-external-output to permit writing outside the project root."
+                    )
+            check_path = check_path.parent
+
         if destination.exists() and not force:
             raise FileExistsError(f"Refusing to overwrite existing {destination}; pass --force to replace it")
         destination.parent.mkdir(parents=True, exist_ok=True)

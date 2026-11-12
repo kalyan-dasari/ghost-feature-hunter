@@ -24,6 +24,7 @@ class HunterConfig(StrictModel):
     production_approved: bool = False
     report_dir: str = "ghost-reports"
     database_url_env: str | None = None
+    allowed_database_dirs: list[str] = Field(default_factory=list)
 
     @field_validator("base_url")
     @classmethod

@@ -35,7 +35,12 @@ def _sqlite_read_only_authorizer(action_code: int, arg1: str | None, arg2: str |
     return sqlite3.SQLITE_OK if action_code in allowed_actions else sqlite3.SQLITE_DENY
 
 
-def _database_path(database_url: str, project_root: Path, environment: str = "development") -> Path:
+def _database_path(
+    database_url: str,
+    project_root: Path,
+    environment: str = "development",
+    allowed_dirs: list[str] | None = None,
+) -> Path:
     parsed = urlsplit(database_url)
     if (
         parsed.scheme not in {"sqlite", "sqlite+pysqlite"}
@@ -61,6 +66,12 @@ def _database_path(database_url: str, project_root: Path, environment: str = "de
     if environment in {"test", "development"}:
         try:
             allowed_roots.append(Path(tempfile.gettempdir()).resolve())
+        except OSError:
+            pass
+
+    for extra_dir in (allowed_dirs or []):
+        try:
+            allowed_roots.append(Path(extra_dir).resolve())
         except OSError:
             pass
 
@@ -108,7 +119,12 @@ class DatabaseAdapter:
             return unknown_result(journey, step, f"Database environment variable {env_name!r} is unavailable.", start)
 
         try:
-            db_path = _database_path(database_url, context.project_root, context.config.environment)
+            db_path = _database_path(
+                database_url,
+                context.project_root,
+                context.config.environment,
+                context.config.allowed_database_dirs,
+            )
             if not db_path.is_file():
                 return unknown_result(journey, step, "Configured SQLite database file does not exist.", start)
             sqlite_uri = f"file:{quote(db_path.as_posix(), safe='/:')}?mode=ro"

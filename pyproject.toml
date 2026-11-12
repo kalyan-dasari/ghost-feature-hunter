@@ -32,7 +32,6 @@ dependencies = [
 
 [project.optional-dependencies]
 browser = ["playwright>=1.45,<2"]
-database = []  # SQLite uses Python standard library; PostgreSQL/MySQL drivers in M3/M5
 demo = ["flask>=3.0,<4"]
 dev = ["build>=1.2,<2", "jsonschema>=4.22,<5", "pytest>=8.0,<10"]
 all = ["playwright>=1.45,<2", "flask>=3.0,<4", "jsonschema>=4.22,<5", "pytest>=8.0,<10"]
