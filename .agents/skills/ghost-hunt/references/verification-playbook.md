@@ -88,8 +88,9 @@ If the agent has browser automation tools available:
 Verify that application operations actually commit the expected records and state transitions into the database.
 
 > [!CAUTION]
-> **Database Safety:**
-> Always execute read-only `SELECT` queries. Never execute `UPDATE`, `DELETE`, `DROP`, or `ALTER` during an audit.
+> **Database Safety & Isolation:**
+> Always execute read-only `SELECT` queries during audits. Never execute `UPDATE`, `DELETE`, `DROP`, or `ALTER` during an audit.
+> When testing stateful or benchmark flows, always execute against disposable temporary databases (`tempfile.mkdtemp()`) with synthetic test data. Clean up and reseed databases between runs so that residual data does not contaminate subsequent verification outcomes.
 
 ### Native Agent Execution
 Use the database CLI or a one-line Python script:
