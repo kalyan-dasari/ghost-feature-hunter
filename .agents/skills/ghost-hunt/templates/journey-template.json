@@ -1,0 +1,83 @@
+{
+  "$schema": "../../schemas/journey.schema.json",
+  "schema_version": "1.0",
+  "feature": "sample_feature",
+  "description": "Verification journey for sample_feature covering UI, API, database persistence, and error paths.",
+  "steps": [
+    {
+      "id": "sample-api-read",
+      "checkpoint": "Endpoint responds with valid resource payload",
+      "adapter": "http",
+      "expected_behavior": "Returns HTTP 200 with non-empty item list",
+      "source_of_expectation": "api_contract",
+      "settings": {
+        "method": "GET",
+        "url": "/api/items",
+        "timeout_seconds": 5.0,
+        "checks": {
+          "status_code": 200,
+          "json_exists": ["items"]
+        }
+      }
+    },
+    {
+      "id": "sample-api-mutate",
+      "checkpoint": "Submitting item creates new record",
+      "adapter": "http",
+      "expected_behavior": "Returns HTTP 201 with created item ID",
+      "source_of_expectation": "user_requirement",
+      "settings": {
+        "method": "POST",
+        "url": "/api/items",
+        "json": {
+          "name": "Widget",
+          "price_cents": 1500
+        },
+        "checks": {
+          "status_code": 201,
+          "json_exists": ["id"]
+        }
+      }
+    },
+    {
+      "id": "sample-db-persisted",
+      "checkpoint": "New item is persisted in the database",
+      "adapter": "database",
+      "expected_behavior": "Row exists in items table with name Widget and price_cents 1500",
+      "source_of_expectation": "product_documentation",
+      "settings": {
+        "database_url_env": "APP_DATABASE_URL",
+        "query": "SELECT name, price_cents FROM items WHERE name = :name",
+        "parameters": {
+          "name": "Widget"
+        },
+        "checks": {
+          "row_count_equals": 1,
+          "first_row_equals": {
+            "name": "Widget",
+            "price_cents": 1500
+          }
+        }
+      }
+    },
+    {
+      "id": "sample-error-validation",
+      "checkpoint": "Negative price is rejected with HTTP 400",
+      "adapter": "http",
+      "expected_behavior": "Returns HTTP 400 when price_cents is negative",
+      "source_of_expectation": "api_contract",
+      "settings": {
+        "method": "POST",
+        "url": "/api/items",
+        "json": {
+          "name": "Bad Widget",
+          "price_cents": -500
+        },
+        "checks": {
+          "status_code": 400
+        }
+      }
+    }
+  ]
+}
+
