@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -56,6 +57,12 @@ def _database_path(
         raw_path = raw_path[1:]
     if not raw_path or raw_path == ":memory:":
         raise ValueError("Only file-backed SQLite databases are supported.")
+
+    is_windows_drive = bool(re.match(r"^[a-zA-Z]:", raw_path))
+    if sys.platform != "win32" and is_windows_drive:
+        # A Windows drive-style path on POSIX is a foreign absolute path outside the allowed roots.
+        raise ValueError(f"Database file path {raw_path} is outside the allowed project directories.")
+
     path = Path(raw_path).expanduser()
     if not path.is_absolute():
         path = project_root / path

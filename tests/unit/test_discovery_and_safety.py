@@ -104,7 +104,14 @@ def test_database_authorizer_allows_string_literal_keywords(tmp_path, monkeypatc
 
 
 def test_database_path_outside_allowed_roots_is_rejected(tmp_path, monkeypatch):
-    monkeypatch.setenv("UNSAFE_DB", "sqlite:///C:/Windows/System32/sensitive.db")
+    import sys
+
+    if sys.platform == "win32":
+        unsafe_url = "sqlite:///C:/Windows/System32/sensitive.db"
+    else:
+        unsafe_url = "sqlite:////etc/sensitive.db"
+
+    monkeypatch.setenv("UNSAFE_DB", unsafe_url)
     journey = _journey(
         "database",
         {
@@ -124,6 +131,42 @@ def test_database_path_outside_allowed_roots_is_rejected(tmp_path, monkeypatch):
     )
     assert result.status == "UNKNOWN"
     assert "outside the allowed project directories" in result.actual_observation
+
+
+def test_windows_drive_path_on_posix_is_rejected(tmp_path, monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setenv("FOREIGN_WIN_DB", "sqlite:///C:/Windows/System32/sensitive.db")
+    journey = _journey(
+        "database",
+        {
+            "database_url_env": "FOREIGN_WIN_DB",
+            "query": "SELECT 1",
+            "checks": {"row_count_equals": 1},
+        },
+    )
+    result = DatabaseAdapter().verify(
+        AdapterContext(
+            tmp_path,
+            HunterConfig(environment="production", production_approved=True),
+            approve_production=True,
+        ),
+        journey,
+        journey.steps[0],
+    )
+    assert result.status == "UNKNOWN"
+    assert "outside the allowed project directories" in result.actual_observation
+
+
+def test_database_path_direct_foreign_windows_drive_on_posix(tmp_path, monkeypatch):
+    from ghost_hunter.adapters.database import _database_path
+    import sys
+    import pytest
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    with pytest.raises(ValueError, match="outside the allowed project directories"):
+        _database_path("sqlite:///C:/Windows/System32/sensitive.db", tmp_path)
 
 
 def test_database_observation_is_blocked_for_production_without_approval(tmp_path):
