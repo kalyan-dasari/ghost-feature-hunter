@@ -19,7 +19,7 @@ Every project discovery and repository audit report must begin with an explicit 
 | **JS/TS / Express** | Yes | Route extraction, middleware, client calls, and symbols | Dynamic router middleware chains and runtime mount points require inspection. |
 | **JS/TS / Next.js** | Yes | App Router / Pages Router routes, pages, and components | Dynamic catch-all routes (`[...slug]`) are normalized. |
 | **JS/TS / React** | Yes | Multiline component tags, UI buttons, handlers, form inputs | Higher-order components and complex context state updates require execution. |
-| **Other (Go, Rust, Java, etc.)**| Yes | File inventory and package manifest inspection only | Deep AST route and caller analysis are not currently implemented. |
+| **Other (Go, Rust, Java, etc.)**| Yes | File inventory and package manifest inspection only (inventory-only) | Deep AST route analysis and dependency usage analysis are not currently implemented; manifests are inventory-only. |
 
 ---
 
