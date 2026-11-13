@@ -1,6 +1,42 @@
-# Decision Trees: Execution Mode, Workflows & Safety Gates
+# Decision Trees: Modes, Execution & Safety Gates
 
-Use these decision trees to determine the appropriate execution mode, workflow steps, and safety constraints for any feature investigation.
+Use these decision trees to determine the appropriate invocation mode, execution tooling, and safety constraints for any feature or codebase investigation.
+
+---
+
+## 0. Invocation Mode Decision Tree
+
+```text
+What did the user invoke?
+│
+├── "/ghost-hunt discover"
+│   └── Mode A: Project Discovery
+│       ├── Detect project root & git bounds (consult references/project-context.md)
+│       ├── Separate primary application source from examples/fixtures
+│       └── Output architecture inventory (no runtime mutations)
+│
+├── "/ghost-hunt investigate <feature>"
+│   └── Mode B: Feature-Specific Investigation
+│       ├── Lock scope to selected primary application
+│       └── Execute the 11-step feature protocol (Scope -> Discovery -> Flow -> Execution -> Report)
+│
+├── "/ghost-hunt audit"
+│   └── Mode C: Whole-Repository Audit
+│       ├── Audit entire project for missing routes, unused code, and duplication
+│       └── Consult references/repository-audit.md
+│
+├── "/ghost-hunt verify <feature>"
+│   └── Mode D: Post-Fix Regression Verification
+│       └── Re-verify approved code fixes and test suite regressions
+│
+└── "/ghost-hunt investigate" (bare invocation, no feature specified)
+    └── Scope Lock & Clarification:
+        ├── 1. Detect and display project context (project name, root, frameworks)
+        ├── 2. Perform lightweight structural discovery
+        ├── 3. DO NOT select an example, demo, or benchmark application
+        ├── 4. Ask one concise question to clarify the feature to investigate
+        └── 5. Explain that whole-repository audit is available via "/ghost-hunt audit"
+```
 
 ---
 

@@ -1,6 +1,19 @@
 # Discovery & Feature Understanding
 
-This guide covers **Feature Discovery**, **End-to-End Flow Tracing**, and **Requirement / Acceptance Criteria Analysis**.
+This guide covers **Project Context & Scope Locking**, **Feature Discovery**, **End-to-End Flow Tracing**, and **Requirement Provenance Analysis**.
+
+---
+
+## 0. Project Context & Scope Locking
+
+Before discovering routes or tracing features:
+1. **Detect Project Bounds:** Identify workspace root, Git root, and package manifests (`pyproject.toml`, `package.json`).
+2. **Isolate Primary Application Source from Examples:**
+   - Categorize `src/`, `lib/`, `app/` as primary application source.
+   - Categorize `examples/`, `fixtures/`, `benchmarks/`, `demos/` as supporting non-production targets.
+   - **Never silently choose an example or benchmark directory as the primary application.**
+   - If auditing Ghost Hunt itself, the target is `ghost-feature-hunter`, not `examples/broken-flask-shop`.
+3. **Explicit Paths Over Inferred Roots:** If the user specifies an explicit application path, that path overrides any inferred root.
 
 ---
 
@@ -55,15 +68,20 @@ Once relevant files are located, trace the data flow backwards and forwards acro
 
 ## 3. Requirement & Acceptance Criteria Analysis
 
-Every verification checkpoint must be anchored to an authoritative source of expectation.
+Every verification checkpoint must be anchored to an authoritative source of expectation. Never manufacture requirements.
 
 ### The Five Sources of Expectation:
-1. **`user_requirement`:** Constraints explicitly stated by the developer in the chat prompt (e.g., "orders over $50 should have free shipping").
-2. **`product_documentation`:** Specifications documented in `README.md`, docs, OpenAPI/Swagger specifications, or user stories.
-3. **`api_contract`:** Formal schemas, TypeScript interfaces, Pydantic models, or proto definitions.
-4. **`existing_test`:** Behavioral assertions codified in passing unit, integration, or e2e test suites.
-5. **`inferred_assumption`:** Hypothesized behavior deduced from source code reading.
+1. **`user_requirement`:** Constraints explicitly stated by the developer in the chat prompt (e.g., "orders over $50 should have free shipping"). **Must quote or cite the relevant user instruction.** Never assign this tag to assumptions made by the agent.
+2. **`product_documentation`:** Specifications documented in `README.md`, docs, OpenAPI/Swagger specifications, or user stories. **Must include document path, section, and line reference.**
+3. **`api_contract`:** Formal schemas, TypeScript interfaces, Pydantic models, or proto definitions. **Must include the exact contract file and line location.**
+4. **`existing_test`:** Behavioral assertions codified in passing unit, integration, or e2e test suites. **Must cite test file and test function.** Note: Passing tests are evidence of an existing assertion, not proof that the underlying business rule is correct.
+5. **`inferred_assumption`:** Hypotheses deduced from source code reading, variable names, or conventions.
 
 > [!IMPORTANT]
-> **The Zero-Inference Rule:**
-> Inferred expectations must be explicitly labeled as `inferred_assumption` and presented to the developer for confirmation before treating a mismatch as an authoritative defect. Source code alone represents *how the code is written*, not necessarily *what the business requires*.
+> **The Critical Rule for Inferred Assumptions:**
+> When an expectation is an inferred assumption:
+> - Clearly label it as `inferred_assumption`.
+> - Explain why it was inferred.
+> - Ask for user confirmation before classifying a discrepancy as a confirmed business defect.
+> - An unconfirmed assumption must evaluate to **`UNKNOWN`**, never a fabricated `FAIL` or `PASS`.
+> - Do not manufacture a `FAIL` simply because the code differs from conventional behavior.

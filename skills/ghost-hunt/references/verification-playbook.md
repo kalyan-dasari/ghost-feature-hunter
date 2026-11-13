@@ -4,6 +4,25 @@ This playbook provides actionable instructions for executing safe verification c
 
 ---
 
+## 0. Side-Effect Classification & Authorization Gate
+
+### Classify Actual Side Effects
+Never assume an operation is safe solely based on its HTTP method:
+- A `GET` endpoint may trigger background writes, state changes, or queue jobs.
+- A `POST` endpoint may be a non-mutating search query.
+- Browser button clicks and form navigations frequently trigger mutations.
+- Running a test suite or importing application modules may initialize or mutate persistent databases.
+
+### Authorization Gate for Level 3 Mutations
+Before executing any state-altering request (`POST`, `PUT`, `DELETE`, `PATCH`, or browser form submissions):
+1. **Explain the target environment** (must be a local, isolated test server).
+2. **Explain the endpoint or action** to be invoked.
+3. **Explain what data will change.**
+4. **Explain the isolation & cleanup strategy.**
+5. **Request explicit user authorization.**
+
+---
+
 ## 1. API & Contract Verification
 
 Verify HTTP response status codes, payload structures, headers, and response latency.
@@ -83,14 +102,24 @@ If the agent has browser automation tools available:
 
 ---
 
-## 3. Database Persistence Verification
+## 3. Database Persistence & Stateful Scenario Isolation
 
 Verify that application operations actually commit the expected records and state transitions into the database.
 
 > [!CAUTION]
-> **Database Safety & Isolation:**
-> Always execute read-only `SELECT` queries during audits. Never execute `UPDATE`, `DELETE`, `DROP`, or `ALTER` during an audit.
-> When testing stateful or benchmark flows, always execute against disposable temporary databases (`tempfile.mkdtemp()`) with synthetic test data. Clean up and reseed databases between runs so that residual data does not contaminate subsequent verification outcomes.
+> **State Contamination & The False PASS Trap:**
+> Reusing a modified test database across checks creates contaminated state that can produce false `PASS` results.
+> *Example (The Inventory Trap):* If an order check previously decremented product stock from 10 to 9, a subsequent check purchasing 2 units that expects stock 8 will erroneously see stock 8 if the implementation has a defect subtracting 1 unit (`9 - 1 = 8`). This falsely masks a critical bug!
+>
+> **Mandatory Isolation Protocol:**
+> 1. **Disposable Database Per Scenario:** Point the test target to a fresh temporary SQLite database (`tempfile.NamedTemporaryFile`) or test container.
+> 2. **Seed Known Initial State:** Populate clean seed rows with known initial quantities.
+> 3. **Record Initial Value:** Execute a read-only query to record `initial_value` before the check.
+> 4. **Execute Only Approved Check:** Trigger the authorized mutation.
+> 5. **Record Final Value:** Execute a read-only query to record `actual_final_value`.
+> 6. **Assert Exact Delta:** Verify `expected_final_value` against `actual_final_value`.
+> 7. **Clean Up Test Database:** Delete temporary files immediately after execution.
+> 8. **Uncontaminated Invariant:** If clean database isolation cannot be established, mark state-dependent assertions **`UNKNOWN`**. Never continue on contaminated state.
 
 ### Native Agent Execution
 Use the database CLI or a one-line Python script:
@@ -158,4 +187,19 @@ Verify how the feature behaves under adverse, invalid, or boundary conditions:
    - Assert: Request rejected with `HTTP 400 Out of stock`; inventory is NOT modified; no order is created.
 3. **Transaction Rollback:** If payment gateway simulation fails or an exception occurs halfway through order creation:
    - Assert: Entire database transaction rolls back; no orphan rows in `orders` or `order_items`.
+
+---
+
+## 6. The PASS Evidence Contract
+
+A checkpoint may evaluate to **`PASS`** if and only if all of the following conditions are met:
+1. **Authoritative Expectation:** The expected behavior is backed by `user_requirement`, `product_documentation`, `api_contract`, or `existing_test`. Inferred assumptions require explicit user confirmation.
+2. **Actual Execution:** The exact verification check was actually dispatched and observed.
+3. **Recorded Observation:** Concrete empirical outputs (status codes, payloads, row values) are captured.
+4. **Preconditions Established:** Baseline initial states were confirmed prior to the check.
+5. **No State Contamination:** Test state was not contaminated by preceding checks.
+6. **Affirmative Match:** Observed output affirmatively matches the authoritative expectation.
+
+> [!WARNING]
+> Static source inspection alone can NEVER prove runtime `PASS`. Source inspection can prove code structure or suspected defects, but runtime behavior requires empirical runtime execution. If evidence is incomplete or unverified, the status MUST be **`UNKNOWN`**.
 

@@ -1,6 +1,6 @@
 ---
 name: ghost-hunt
-description: Evidence-backed feature verification skill for AI coding agents. Discovers code flow, executes safe checks using native tools or optional CLI, isolates confirmed defects, pinpoints root causes, and verifies fixes end-to-end.
+description: Context-aware codebase investigator and feature verification skill for AI coding agents. Discovers architecture, traces data flow, executes safe checks, audits whole repositories, isolates confirmed defects, and verifies fixes end-to-end.
 metadata:
   author: Ghost Feature Hunter contributors
   version: "0.3.0"
@@ -10,158 +10,171 @@ metadata:
 
 > **DON'T TRUST THE FEATURE. VERIFY IT.**
 
-Ghost Hunt is a skill-first software verification tool for AI coding agents. When a developer asks you to investigate, verify, or debug a feature, use this skill to trace how the feature works end-to-end, execute real safe checks, identify confirmed defects, isolate root causes, and verify fixes with reproducible evidence.
+Ghost Hunt is an open-source, context-aware Agent Skill for AI coding agents. When asked to inspect a project, audit a repository, or verify a feature, Ghost Hunt first locks the correct project scope, traces full-stack data flow, executes safe checks, isolates confirmed defects with empirical evidence, and recommends targeted fixes.
 
 ---
 
-## Agent Invocations
+## 🧭 Investigation Modes & Invocations
 
-- **Google Antigravity:** `/ghost-hunt [feature]` or `/ghost-hunt investigate <feature>`
-- **Claude Code:** `/ghost-hunt [feature]` or `/ghost-hunt investigate <feature>`
-- **OpenAI Codex:** `$ghost-hunt [feature]` or `$ghost-hunt investigate <feature>`
-- **Direct Prompt:** "Investigate my checkout feature", "Verify that user registration works", "Check if billing properly deducts inventory"
+Ghost Hunt operates in four distinct skill modes:
 
----
-
-## Dual Execution Modes
-
-Ghost Hunt adapts to the agent's available environment:
-
-| Mode | Prerequisites | How Checks Are Executed |
+| Mode | Invocation Syntax | Purpose |
 |---|---|---|
-| **Native Agent Tools (Default)** | **None.** Works in any repo out of the box. | Uses the agent's native tools: file inspection, terminal commands (`curl`, test runners, Python/Node scripts), and browser tools. |
-| **Deterministic CLI Engine (Optional)** | Python 3.11+ and `ghost-hunter` installed (`pip install ghost-feature-hunter[all]`). | Executes strict JSON journeys via `ghost-hunter audit <feature>` with automated schema validation and report rendering. |
+| **Project Discovery** | `/ghost-hunt discover` | Static architecture inventory, boundary detection, framework status. Zero runtime mutations. |
+| **Feature Investigation** | `/ghost-hunt investigate <feature>` | End-to-end verification of a specific feature in the target application. |
+| **Repository-Wide Audit** | `/ghost-hunt audit` | Whole-repository audit for missing routes, unused code candidates, duplication, and code waste. |
+| **Post-Fix Verification** | `/ghost-hunt verify <feature>` | Re-verifies approved code fixes and runs regression checks against test suites. |
 
-*Rule:* If the Python CLI is installed, you may leverage it for deterministic execution. If it is not installed, **proceed immediately using your native agent tools**. Never claim a tool was executed if it was not available.
+### Bare Invocation Protocol (`/ghost-hunt investigate` or `/ghost-hunt`)
+When invoked without a feature argument:
+1. **Identify Project Root:** Detect workspace root, Git root, and package manifests.
+2. **Display Project Context:** Report project name, primary languages, and detected application roots.
+3. **Isolate Examples & Fixtures:** Categorize `src/`, `lib/`, `app/` as primary application source; classify `examples/`, `fixtures/`, and `benchmarks/` separately. **Never silently choose an example or benchmark directory as the primary target.**
+4. **Clarify Intent:** Ask one concise question to determine which feature to investigate, while explaining that a whole-project investigation is available via `/ghost-hunt audit`.
 
 ---
 
-## The Three-Status Evidence Standard
+## 📋 Mandatory Project Context Summary
+
+Every Ghost Hunt audit report must begin with this standardized block:
+
+```markdown
+### Project Context Summary
+- **Project Name:** `<project_name>`
+- **Project Root:** `<path_to_project_root>`
+- **Git Repository Root:** `<git_root_or_none>`
+- **Selected Application Root:** `<app_root>`
+- **Framework & Languages:** `<frameworks_and_languages>`
+- **Investigation Mode:** `<discover | investigate | audit | verify>`
+- **Included Directories:** `<included_directories>`
+- **Excluded Directories:** `<excluded_directories (e.g. examples, vendor, tests)>`
+- **Available Capabilities:** `<native_tools_available (file, shell, curl, browser)>`
+- **Limitations:** `<unsupported_runtimes_or_mocked_services>`
+```
+
+---
+
+## ⚖️ The Three-Status Evidence Standard
 
 Classify every verification checkpoint into exactly one of three states. Never deviate from this logic:
 
 | Status | Exact Meaning | Permissible Interpretation |
 |---|---|---|
-| **`PASS`** | A real check ran and its observed result matched the explicit expected behavior. | Proves **only** the executed assertion. Never infer unasserted behavior. |
-| **`FAIL`** | An executed check directly contradicted an explicit expected behavior. | Proves the feature broke at this specific checkpoint. |
-| **`UNKNOWN`** | Prerequisites, permissions, runtimes, or evidence were unavailable. | **Never relabel as PASS or FAIL.** Indicates an unverified check. |
+| **`PASS`** | A real check ran against uncontaminated state and its observed result affirmatively matched an authoritative expectation. | Proves **only** the executed assertion. Never infer unasserted behavior. |
+| **`FAIL`** | An executed check directly contradicted an authoritative expected behavior. | Proves the feature broke at this specific checkpoint. |
+| **`UNKNOWN`** | Prerequisites, permissions, runtimes, clean databases, or evidence were unavailable; or an inferred assumption is unconfirmed. | **Never relabel as PASS or FAIL.** Indicates an unverified check. |
 
 ---
 
-## The 11-Step Investigation Protocol
+## 🔬 The 11-Step Feature Investigation Protocol
 
-When invoked with `/ghost-hunt <feature>` or a feature request, execute these 11 steps:
+When investigating a feature (`/ghost-hunt investigate <feature>`), execute these 11 steps:
 
 ```text
-1. Feature Scope ──> 2. Static Discovery ──> 3. Flow Tracing ──> 4. Requirements
-                                                                         │
-7. Defect Isolation <── 6. Safe Execution <── 5. Journey Checkpoints <───┘
+1. Scope & Project Lock ──> 2. Static Discovery ──> 3. Flow Tracing ──> 4. Requirements
+                                                                               │
+7. Defect Isolation <── 6. Safe Execution <── 5. Journey Checkpoints <─────────┘
 │
 └──> 8. Root Cause ──> 9. Minimal Fix ──> 10. Regression ──> 11. Evidence Report
 ```
 
-### 1. Understand Feature Scope
-Extract the target feature name, user intent, affected personas, and entry points. Identify whether the user wants an exploratory audit, bug reproduction, or post-change regression check.
+### 1. Scope & Project Context Lock
+Detect project root, git root, and target application. Distinguish application source from examples/fixtures. Explicit user paths take precedence over inferred roots. *(Consult [references/project-context.md](references/project-context.md))*
 
 ### 2. Discover Relevant Source Files
-Statically inspect the codebase without executing untrusted code:
-- Identify route definitions and API contracts.
-- Find backend controllers, service functions, and middleware.
-- Identify database models, migrations, and table schemas.
-- Locate existing unit and integration tests for the feature.
-- Locate relevant frontend templates, views, or UI components.  
-*(Consult [references/discovery-understanding.md](references/discovery-understanding.md))*
+Statically inspect route definitions, backend controllers, database models, templates, and existing tests without importing or executing untrusted code. *(Consult [references/discovery-understanding.md](references/discovery-understanding.md))*
 
 ### 3. Trace End-to-End Data Flow
-Trace data across all application tiers:
-`User Action / UI View -> HTTP Route -> Controller -> Service / Business Logic -> Database Query / Mutation -> Response -> UI State`.
+Trace data across all tiers: `User Action -> Route -> Controller -> Service Logic -> DB Mutation -> Response -> UI State`.
 
 ### 4. Analyze Requirements & Tag Sources
-Classify all behavioral expectations by their source:
-1. `user_requirement`: Constraints stated explicitly in the prompt.
-2. `product_documentation`: Specifications found in README or docs.
-3. `api_contract`: Formal schema (OpenAPI, GraphQL, TypeScript types).
-4. `existing_test`: Assertions verified by passing test suites.
-5. `inferred_assumption`: Hypothesized behavior. **Always flag assumptions to the user; never treat them as authoritative requirements without approval.**
+Classify all behavioral expectations into the 5-source taxonomy:
+1. `user_requirement`: Constraints stated explicitly by the user in the prompt. **Must quote prompt.**
+2. `product_documentation`: Specifications in README or docs. **Must cite file and section.**
+3. `api_contract`: Formal schema, OpenAPI, or TypeScript types. **Must cite contract file.**
+4. `existing_test`: Assertions verified by passing tests. **Must cite test file and function.**
+5. `inferred_assumption`: Hypotheses deduced from code or patterns.
+
+> [!IMPORTANT]
+> **The Critical Rule for Inferred Assumptions:**
+> Hypotheses must NEVER silently become authoritative requirements. If code differs from an inferred assumption, report it as an observation with status **`UNKNOWN`** and ask for confirmation. Never manufacture a `FAIL` simply because code differs from convention.
 
 ### 5. Define Journey Checkpoints
-Draft discrete, ordered checkpoints covering the happy path, error paths, and edge cases:
-- State the exact **checkpoint name**, **expected behavior**, and **source of expectation**.
-- Choose the verification mechanism: API, UI/DOM, Database, or Test Runner.  
-*(Use template in [templates/journey-template.json](templates/journey-template.json) or [references/journey-mapping.md](references/journey-mapping.md))*
+Structure discrete, ordered checkpoints covering happy paths, auth boundaries, persistence, and error paths. *(Use [templates/journey-template.json](templates/journey-template.json) or [references/journey-mapping.md](references/journey-mapping.md))*
 
 ### 6. Execute Relevant Safe Checks
-Run checks using the best available tools:
-- **API Checks:** Send HTTP requests with `curl`, `httpx`, or native terminal tools. Assert status codes, response headers, and JSON body keys.
-- **Frontend / UI Checks:** Use the agent's browser tool or headless Playwright if available. Assert DOM visibility, form inputs, and expected text.
-- **Database Persistence Checks:** Inspect database records using SQLite CLI, parameterized Python scripts, or query tools. Check row counts and column values. **Keep database checks strictly read-only.**
-- **Auth & Authorization:** Test unauthenticated requests (expect 401), unauthorized roles (expect 403), and tenant isolation.
-- **Error Paths:** Test invalid payloads (expect 400), duplicates (expect 409), and boundary conditions.  
-*(Consult [references/verification-playbook.md](references/verification-playbook.md))*
+- **Side-Effect Classification:** Inspect actual handler behavior before execution; do not assume GET is safe or POST is mutating.
+- **Authorization Gate:** Request explicit user authorization before Level 3 runtime mutations.
+- **Stateful Scenario Isolation:** Run state-dependent checks against fresh disposable databases (`tempfile`). Seed known initial state, record baseline initial values, execute approved actions, and record final observed values.
+- **Contamination Guard:** Never continue on contaminated test state. If clean state cannot be established, mark **`UNKNOWN`**.
+- **PASS Evidence Contract:** PASS requires affirmative match against authoritative expectation with uncontaminated evidence. Static inspection alone can NEVER prove runtime PASS. *(Consult [references/verification-playbook.md](references/verification-playbook.md))*
 
 ### 7. Identify Confirmed Defects
-Record every discrepancy between expected behavior and actual observation as a confirmed defect. Mark the checkpoint **`FAIL`**.
+Record every discrepancy between authoritative expected behavior and actual observation as a confirmed defect (**`FAIL`**).
 
 ### 8. Investigate Root Cause
-For every failing checkpoint:
-- Trace backward from the symptom into the codebase.
-- Cite exact file paths and line numbers: `path/to/file.py:L42-L55`.
-- Distinguish confirmed code bugs from environmental misconfigurations or missing test data.
-- Explain *why* the code fails (e.g., incorrect query filter, missing transaction commit, unhandled null).  
-*(Consult [references/investigation-root-cause.md](references/investigation-root-cause.md))*
+Trace backward from observed failure to exact source files and line ranges (`path/to/file.py:L42-L55`). Explain *why* the defect occurs. *(Consult [references/investigation-root-cause.md](references/investigation-root-cause.md))*
 
 ### 9. Recommend Targeted Fixes
-Present a minimal, surgical fix addressing the root cause:
-- Show the recommended diff.
-- Explain side effects and risk assessment.
-- **NEVER modify source code without user authorization.** Present the fix and ask for approval.
+Present the smallest surgical patch addressing the root cause. **NEVER modify source code without user authorization.**
 
 ### 10. Verify Fixes & Prevent Regressions
-Once the user authorizes the fix:
-- Apply the code edit.
-- Rerun the failing checkpoint to confirm it now passes (**`PASS`**).
-- Rerun adjacent feature checks and existing unit test suites to confirm no regressions.  
-*(Consult [references/regression-verification.md](references/regression-verification.md))*
+Upon user approval, apply the edit, rerun failing checkpoints to confirm resolution (**`PASS`**), and rerun adjacent test suites to prevent regressions. *(Consult [references/regression-verification.md](references/regression-verification.md))*
 
 ### 11. Produce an Evidence-Backed Report
-Deliver a structured Markdown audit report:
-- Summary table: Total checks, PASS, FAIL, UNKNOWN.
-- Checkpoint breakdown with expected vs actual observation, timestamps, and evidence references.
-- Confirmed defects with root-cause analysis and citations.
-- Explicit limitations and unverified areas.  
-*(Use template in [templates/report-template.md](templates/report-template.md) and guide in [references/evidence-reporting.md](references/evidence-reporting.md))*
+Deliver a structured Markdown audit report starting with the Project Context Summary, checkpoint breakdown, before/after measurements, root causes, and limitations. *(Use [templates/report-template.md](templates/report-template.md) and [references/evidence-reporting.md](references/evidence-reporting.md))*
 
 ---
 
-## Safety Defaults & Operation Categories
+## 🏛️ The Whole-Repository Audit Protocol (`/ghost-hunt audit`)
 
-Ghost Hunt categorizes every verification action into four explicit safety levels:
+When invoked with `/ghost-hunt audit`, inspect the complete repository:
+1. **Architecture & Component Inventory:** Map applications, services, routes, models, frontend assets, tests, and configurations.
+2. **Route Connection Analysis:**
+   - **Missing Route Candidates:** Frontend calls an endpoint with no registered backend handler.
+   - **Method / Path Mismatches:** Client dispatches HTTP method or path differing from registered handler.
+   - **Potentially Unused Endpoints:** Routes with 0 callers in frontend, tests, or docs (candidates only).
+   - **Uncovered Routes:** Registered endpoints with zero matching tests in test suites.
+3. **Unused Code Candidates:** Build a static reference graph for unreferenced files, functions, and classes (with explicit caveats for dynamic imports and plugins).
+4. **Dependency Audit:** Identify declared dependencies with no static imports in source.
+5. **Duplicate Logic & Complexity:** Identify repeated business logic, identical validation routines, and redundant wrappers.
+6. **Conservative Code Waste Estimates:** Tally non-overlapping lines of candidate code without double-counting or fake monetary claims. *(Consult [references/repository-audit.md](references/repository-audit.md))*
 
-1. **Source-Code Read-Only Inspection:** Safe. Parsing files, AST, and configurations. Never imports or runs untrusted application code.
-2. **Runtime GET / Read-Only Checks:** Safe in test environments. Non-mutating HTTP methods (`GET`, `HEAD`, `OPTIONS`) and read-only `SELECT` queries.
-3. **Runtime Mutating Operations:** State-altering HTTP methods (`POST`, `PUT`, `PATCH`, `DELETE`) and browser clicks/submits. **Requires explicit user authorization.** Must use synthetic test data.
-4. **Database Write Operations:** Direct database mutations (`INSERT`, `UPDATE`, `DELETE`, `DROP`). Strictly prohibited during read-only audits. When benchmarking stateful flows, always execute against disposable temporary databases; clean up and reseed to prevent previous run contamination.
+---
+
+## 🛡️ Safety Defaults & Operational Tiers
+
+Ghost Hunt strictly enforces four operational safety levels:
+
+| Tier | Category | Safety Policy | Permitted Actions |
+|---|---|---|---|
+| **Level 1** | **Source Inspection** | **Safe by default.** | Static file discovery, AST parsing, test reading. Never imports or executes untrusted code to discover structure. |
+| **Level 2** | **Runtime Read-Only** | **Safe in test environments.** | Safe HTTP probes (`GET`, `HEAD`, `OPTIONS`) and read-only database queries (`SELECT` only, capped at 1,000 rows). |
+| **Level 3** | **Runtime Mutations** | **Requires user authorization.** | State-altering HTTP methods (`POST`, `PUT`, `PATCH`, `DELETE`) and browser form submissions. Must target disposable test environments with synthetic data. |
+| **Level 4** | **Database Writes** | **Strictly isolated.** | Direct database mutations (`INSERT`, `UPDATE`, `DELETE`). Strictly prohibited against production databases. Restricted to disposable temporary databases with cleanup and re-seeding. |
 
 ### Absolute Safety Guardrails:
-- **Production Guardrail:** Block all checks against production environments unless explicit user authorization is provided.
-- **Credential Redaction:** Automatically redact passwords, API keys, Bearer tokens, and personal email addresses from evidence logs.
-- **No Code Edits Without Approval:** Always present proposed fixes for user approval before modifying code.
+- **Production Guardrail:** Block all checks against production environments by default.
+- **Credential Redaction:** Automatically redact passwords, API keys, Bearer tokens, and email addresses from evidence logs.
+- **No Code Edits Without Approval:** Always present proposed fixes as diffs for user approval before modifying code.
 
 ---
 
-## Progressive Disclosure & Reference Index
+## 📚 Progressive Disclosure & Reference Index
 
-Load only the reference documents needed for your specific investigation:
+Load only the reference documents needed for your specific task:
 
-- [references/decision-tree.md](references/decision-tree.md) — Workflow selection, native vs CLI tools, and safety gates.
+- [references/project-context.md](references/project-context.md) — Project detection, scope locking, and example isolation.
+- [references/repository-audit.md](references/repository-audit.md) — Playbook for `/ghost-hunt audit` whole-repository inspections.
+- [references/decision-tree.md](references/decision-tree.md) — Mode selection, native vs CLI tools, and safety gates.
 - [references/discovery-understanding.md](references/discovery-understanding.md) — Codebase inspection and data flow tracing.
 - [references/journey-mapping.md](references/journey-mapping.md) — Designing discrete journey checkpoints and expectation sources.
-- [references/verification-playbook.md](references/verification-playbook.md) — Detailed testing guides for API, Browser, Database, Auth, and Error paths.
+- [references/verification-playbook.md](references/verification-playbook.md) — Testing guides, scenario isolation, and PASS evidence contract.
 - [references/investigation-root-cause.md](references/investigation-root-cause.md) — Root cause diagnosis, stack tracing, and minimal fix design.
 - [references/regression-verification.md](references/regression-verification.md) — Post-fix regression verification procedures.
 - [references/evidence-reporting.md](references/evidence-reporting.md) — Evidence sanitization, redaction, and reporting standards.
 - [references/troubleshooting.md](references/troubleshooting.md) — Environment blockers, permissions, and tool recovery.
-- [references/optional-cli.md](references/optional-cli.md) — Advanced usage of the optional Python verification CLI engine.
+- [references/optional-cli.md](references/optional-cli.md) — Usage of the optional Python verification CLI engine.
 - [templates/report-template.md](templates/report-template.md) — Reusable Markdown report template.
 - [templates/journey-template.json](templates/journey-template.json) — Reusable JSON journey schema template.
 - [examples/checkout-investigation.md](examples/checkout-investigation.md) — Real-world example investigation of a checkout feature.
