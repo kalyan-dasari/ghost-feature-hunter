@@ -49,9 +49,23 @@ def detect_ghost_features(
     ui_actions: list[UIAction] = scan_data.get("ui_actions", [])
     unfinished: list[UnfinishedItem] = scan_data.get("unfinished", [])
     symbols = scan_data.get("symbols", [])
+    production_calls_made = set(scan_data.get("production_calls_made", []))
+    test_calls_made = set(scan_data.get("test_calls_made", []))
     calls_made = set(scan_data.get("calls_made", []))
 
     ghost_candidates: list[dict[str, Any]] = []
+
+    # Detect reverse-proxy or gateway configurations
+    has_reverse_proxy = False
+    for p in root.rglob("*"):
+        if any(part in IGNORED_DIRECTORIES for part in p.parts):
+            continue
+        if p.is_file() and p.name.lower() in (
+            "next.config.js", "next.config.mjs", "next.config.ts",
+            "vite.config.js", "vite.config.ts", "nginx.conf", "default.conf",
+        ):
+            has_reverse_proxy = True
+            break
 
     # Build known backend routes map
     registered_paths = {r.path for r in routes}
@@ -87,7 +101,6 @@ def detect_ghost_features(
     for action in ui_actions:
         if action.action_type == "link":
             target = action.target
-            # Check if target matches any known route or page
             matched = any(match_route(target, kd) for kd in known_destinations)
             if not matched and not target.startswith(("#", "http://", "https://", "mailto:", "tel:")):
                 ghost_candidates.append({
@@ -99,6 +112,9 @@ def detect_ghost_features(
                     "evidence": action.raw,
                     "source": action.source,
                     "line": action.line,
+                    "source_role": action.source_role,
+                    "app_name": action.app_name,
+                    "scope": action.scope,
                     "present_links": [
                         f"UI navigation link '{action.label}' targeting '{target}' in {action.source}:{action.line}"
                     ],
@@ -123,6 +139,9 @@ def detect_ghost_features(
                 "evidence": action.raw,
                 "source": action.source,
                 "line": action.line,
+                "source_role": action.source_role,
+                "app_name": action.app_name,
+                "scope": action.scope,
                 "present_links": [
                     f"UI action button '{action.label}' rendered in {action.source}:{action.line}"
                 ],
@@ -147,6 +166,9 @@ def detect_ghost_features(
                 "evidence": action.raw,
                 "source": action.source,
                 "line": action.line,
+                "source_role": action.source_role,
+                "app_name": action.app_name,
+                "scope": action.scope,
                 "present_links": [
                     f"Form inputs rendered in {action.source}:{action.line}"
                 ],
@@ -164,13 +186,47 @@ def detect_ghost_features(
         endpoint = call.path
         req_method = call.method.upper()
 
+        # External service calls are not missing local routes
+        if endpoint.startswith(("http://", "https://", "//")) or any(
+            domain in endpoint for domain in ("api.stripe.com", "auth0.com", "github.com", "googleapis.com", "paypal.com", "twilio.com")
+        ):
+            call.call_type = "external_service_call"
+            continue
+
         matching_routes: list[RouteDefinition] = []
         for r_path, r_list in routes_by_path.items():
             if match_route(endpoint, r_path):
                 matching_routes.extend(r_list)
 
         if not matching_routes:
-            if endpoint.startswith("/api") or endpoint.startswith("/v1") or endpoint.startswith("/v2"):
+            if has_reverse_proxy:
+                call.call_type = "reverse_proxy_candidate"
+                ghost_candidates.append({
+                    "id": f"ghost-route-{len(ghost_candidates) + 1}",
+                    "category": "reverse_proxy_candidate",
+                    "chain_stage": "Client API Request -> Reverse Proxy Forwarding",
+                    "severity": "Low",
+                    "confidence": "Low",
+                    "finding_state": "Requires Owner Confirmation",
+                    "evidence": call.raw,
+                    "source": call.source,
+                    "line": call.line,
+                    "source_role": call.source_role,
+                    "app_name": call.app_name,
+                    "scope": call.scope,
+                    "present_links": [
+                        f"Client requests '{req_method} {endpoint}' in {call.source}:{call.line}",
+                        "Reverse proxy or gateway configuration exists in project",
+                    ],
+                    "missing_links": [
+                        f"No local backend route registered for '{endpoint}'"
+                    ],
+                    "explanation": f"Client calls '{req_method} {endpoint}', which has no matching local route but may be proxied upstream by reverse proxy configuration.",
+                    "potential_impact": "Request may succeed via proxy or fail if proxy rules are missing.",
+                    "why_false_positive": "Endpoint is forwarded to an upstream service by reverse proxy.",
+                    "recommended_action": "Verify upstream proxy destination.",
+                })
+            elif endpoint.startswith("/api") or endpoint.startswith("/v1") or endpoint.startswith("/v2"):
                 ghost_candidates.append({
                     "id": f"ghost-route-{len(ghost_candidates) + 1}",
                     "category": "ghost_feature_candidate",
@@ -180,6 +236,9 @@ def detect_ghost_features(
                     "evidence": call.raw,
                     "source": call.source,
                     "line": call.line,
+                    "source_role": call.source_role,
+                    "app_name": call.app_name,
+                    "scope": call.scope,
                     "present_links": [
                         f"Client requests '{req_method} {endpoint}' in {call.source}:{call.line}"
                     ],
@@ -192,6 +251,12 @@ def detect_ghost_features(
                     "recommended_action": "Verify if the route is hosted in another service or implement the missing endpoint.",
                 })
         else:
+            local_matches = [r for r in matching_routes if r.app_name == call.app_name]
+            cross_matches = [r for r in matching_routes if r.app_name != call.app_name]
+            if not local_matches and cross_matches:
+                call.call_type = "matching_service_route"
+                call.target_service = cross_matches[0].app_name
+
             # Check method mismatch
             supported_methods = set()
             for r in matching_routes:
@@ -209,6 +274,9 @@ def detect_ghost_features(
                     "evidence": f"Client calls: {call.raw} | Backend route: {matched_route.raw_decorator or matched_route.path}",
                     "source": call.source,
                     "line": call.line,
+                    "source_role": call.source_role,
+                    "app_name": call.app_name,
+                    "scope": call.scope,
                     "present_links": [
                         f"Client calls {req_method} '{endpoint}' in {call.source}:{call.line}",
                         f"Backend route '{matched_route.path}' handles {sorted(supported_methods)} in {matched_route.source}:{matched_route.line}",
@@ -234,6 +302,9 @@ def detect_ghost_features(
                 "evidence": f"Route '{r.path}' -> def {r.function}(...)",
                 "source": r.source,
                 "line": r.line,
+                "source_role": r.source_role,
+                "app_name": r.app_name,
+                "scope": r.scope,
                 "present_links": [
                     f"Route '{r.path}' registered in {r.source}:{r.line}"
                 ],
@@ -247,11 +318,20 @@ def detect_ghost_features(
             })
 
     # 6. Orphaned Business Services (Functions in service files with zero callers)
+    # Tests must not silently mask uncalled production code
     for sym in symbols:
         if sym.symbol_type in ("function", "service") and not sym.name.startswith("_"):
             source_lower = sym.source.lower()
             if "service" in source_lower or "controller" in source_lower:
-                if sym.name not in calls_made:
+                effective_calls = production_calls_made if production_calls_made else calls_made
+                if sym.name not in effective_calls:
+                    in_tests = sym.name in test_calls_made
+                    present_links = [
+                        f"Service function '{sym.name}' implemented in {sym.source}:{sym.line}"
+                    ]
+                    if in_tests:
+                        present_links.append(f"Referenced in test suite (not production wiring)")
+
                     ghost_candidates.append({
                         "id": f"ghost-orphaned-{len(ghost_candidates) + 1}",
                         "category": "ghost_feature_candidate",
@@ -261,13 +341,19 @@ def detect_ghost_features(
                         "evidence": f"Function '{sym.name}' in {sym.source}:{sym.line}",
                         "source": sym.source,
                         "line": sym.line,
-                        "present_links": [
-                            f"Service function '{sym.name}' implemented in {sym.source}:{sym.line}"
-                        ],
+                        "source_role": sym.source_role,
+                        "app_name": sym.app_name,
+                        "scope": sym.scope,
+                        "test_reference_found": in_tests,
+                        "present_links": present_links,
                         "missing_links": [
-                            "No route, CLI command, or background task invokes this service"
+                            "No route, CLI command, or background task invokes this service in production application code"
                         ],
-                        "explanation": f"Service function '{sym.name}' exists but has no identified callers in the application.",
+                        "explanation": (
+                            f"Service function '{sym.name}' exists and is referenced in tests, but has no identified callers in production application code."
+                            if in_tests
+                            else f"Service function '{sym.name}' exists but has no identified callers in the application."
+                        ),
                         "potential_impact": "Dead code or unfinished integration of a backend feature.",
                         "why_false_positive": "May be called via dynamic string dispatch, reflection, or in unanalyzed tests.",
                         "recommended_action": "Connect the service to an entry point or verify if it is deprecated.",
@@ -289,6 +375,9 @@ def detect_ghost_features(
                 "evidence": flag.raw or f"{flag.name} defined in {flag.source}:{flag.line}",
                 "source": flag.source,
                 "line": flag.line,
+                "source_role": flag.source_role,
+                "app_name": flag.app_name,
+                "scope": flag.scope,
                 "flag_name": flag.name,
                 "present_links": [
                     f"Feature flag '{flag.name}' defined in {flag.source}:{flag.line}"
@@ -315,6 +404,9 @@ def detect_ghost_features(
                 "evidence": f"Conditional reference: {c_name}",
                 "source": "codebase",
                 "line": 0,
+                "source_role": "application_source",
+                "app_name": "primary",
+                "scope": "primary_application",
                 "flag_name": c_name,
                 "present_links": [
                     f"Conditional logic branches on '{c_name}'"
