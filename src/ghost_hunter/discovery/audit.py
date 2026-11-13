@@ -58,6 +58,13 @@ def _normalize_ast_body(body: list[ast.stmt]) -> str:
         return ""
 
     class StructuralNormalizer(ast.NodeTransformer):
+        def visit_Call(self, node: ast.Call) -> ast.AST:
+            # Preserve called function names, operators, and constants; normalize arguments
+            func = node.func
+            new_args = [self.visit(arg) for arg in node.args]
+            new_keywords = [self.visit(kw) for kw in node.keywords]
+            return ast.copy_location(ast.Call(func=func, args=new_args, keywords=new_keywords), node)
+
         def visit_Name(self, node: ast.Name) -> ast.Name:
             return ast.copy_location(ast.Name(id="_VAR_", ctx=node.ctx), node)
 
@@ -161,6 +168,40 @@ def estimate_duplicate_blocks(python_files: list[Path]) -> list[dict[str, Any]]:
                 })
 
     return duplicate_candidates
+
+
+def _evaluate_route_test_coverage(
+    route: RouteDefinition,
+    test_files_data: list[tuple[str, str]],
+) -> str:
+    """Evaluate whether a route is test_verified, test_reference_candidate, or testing_gap_candidate.
+
+    test_verified: The route path or handler is actively invoked in a test and assertions are present.
+    test_reference_candidate: The route is mentioned in text or comments but lacks execution/assertions.
+    testing_gap_candidate: The route is completely absent from test files.
+    """
+    path = route.path
+    func = route.function
+    has_mention = False
+
+    assertion_pattern = re.compile(r"""\b(?:assert\s+|self\.assert|expect\s*\(|\.toBe\(|\.toEqual\(|pytest\.raises)""")
+    path_regex = re.escape(path.strip("/"))
+    call_pattern = re.compile(
+        rf"""(?:client\.(?:get|post|put|delete|patch)|requests\.(?:get|post|put|delete|patch)|fetch|axios)\s*\(\s*['"][^'"]*{path_regex}""",
+        re.IGNORECASE,
+    )
+
+    for file_path, content in test_files_data:
+        if path in content or (func and f"{func}(" in content):
+            has_mention = True
+            has_assertion = bool(assertion_pattern.search(content))
+            has_call = bool(call_pattern.search(content)) or (func and f"{func}(" in content)
+            if has_call and has_assertion:
+                return "test_verified"
+
+    if has_mention:
+        return "test_reference_candidate"
+    return "testing_gap_candidate"
 
 
 def audit_dependencies(project_root: Path, detected_imports: list[str]) -> dict[str, Any]:

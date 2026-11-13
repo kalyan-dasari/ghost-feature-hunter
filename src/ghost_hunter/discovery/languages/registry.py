@@ -7,6 +7,7 @@ from typing import Any
 
 from ghost_hunter.discovery.languages.base import BaseLanguageAdapter
 from ghost_hunter.discovery.languages.javascript_adapter import JavaScriptAdapter
+from ghost_hunter.discovery.languages.models import FeatureFlagDefinition
 from ghost_hunter.discovery.languages.python_adapter import PythonAdapter
 from ghost_hunter.discovery.project import IGNORED_DIRECTORIES, is_example_or_fixture
 
@@ -64,13 +65,17 @@ class LanguageRegistry:
 
         # Add detected framework entries
         for fw in detected_frameworks:
-            matrix.append({
+            adapter = next((a for a in self._adapters if a.language == fw.get("language")), None)
+            caps = adapter.get_capabilities() if adapter else {}
+            entry = {
                 "language_framework": f"{fw['language']} / {fw['framework']}",
                 "detected": True,
-                "analysis_capability": fw.get("analysis_capability", "Supported analysis"),
                 "status": fw.get("status", "supported"),
+                "analysis_capability": fw.get("analysis_capability", "Supported analysis"),
+                "capabilities": fw.get("capabilities", caps),
                 "limitations": fw.get("limitations", "None specified"),
-            })
+            }
+            matrix.append(entry)
 
         # Add entries for languages that were detected but have no specialized adapter
         supported_langs = {"Python", "JavaScript/TypeScript"}
@@ -79,14 +84,23 @@ class LanguageRegistry:
                 matrix.append({
                     "language_framework": lang,
                     "detected": True,
-                    "analysis_capability": "File inventory and package manifest inspection only",
                     "status": "partial",
+                    "analysis_capability": "File inventory and package manifest inspection only",
+                    "capabilities": {
+                        "route_extraction": False,
+                        "symbol_analysis": False,
+                        "ui_analysis": False,
+                        "reference_analysis": False,
+                        "duplicate_detection": False,
+                        "unfinished_code_detection": False,
+                        "dependency_analysis": True,
+                    },
                     "limitations": f"AST parsing, route extraction, and reference graph analysis for {lang} are not implemented in the current engine.",
                 })
 
         return matrix
 
-    def scan_repository(self, project_root: Path) -> dict[str, Any]:
+    def scan_repository(self, project_root: Path, file_limit: int = 15000) -> dict[str, Any]:
         """Deep multi-language scan across the entire project root."""
         root = project_root.resolve()
 
@@ -103,8 +117,12 @@ class LanguageRegistry:
         all_imports = []
         all_exports = []
         all_calls_made = []
+        all_feature_flags: list[FeatureFlagDefinition] = []
+        all_feature_flag_consumers: set[str] = set()
 
         file_count = 0
+        scan_truncated = False
+
         for path in root.rglob("*"):
             if path.is_symlink():
                 continue
@@ -114,7 +132,8 @@ class LanguageRegistry:
                 continue
 
             file_count += 1
-            if file_count > 15000:
+            if file_count > file_limit:
+                scan_truncated = True
                 break
 
             lang = self.identify_language(path)
@@ -134,8 +153,22 @@ class LanguageRegistry:
                 all_imports.extend(analysis.get("imports", []))
                 all_exports.extend(analysis.get("exports", []))
                 all_calls_made.extend(analysis.get("calls_made", []))
+                all_feature_flags.extend(analysis.get("feature_flags", []))
+                all_feature_flag_consumers.update(analysis.get("feature_flag_consumers", []))
 
-        # Detect frameworks across all adapters
+        # Check manifests without cross-language contamination
+        has_py_manifest = (
+            (root / "pyproject.toml").is_file()
+            or (root / "setup.py").is_file()
+            or (root / "requirements.txt").is_file()
+            or any(p.name in ("pyproject.toml", "setup.py", "requirements.txt") for p in root.rglob("*.txt") if not any(part in IGNORED_DIRECTORIES for part in p.parts))
+        )
+        has_js_manifest = (
+            (root / "package.json").is_file()
+            or (root / "tsconfig.json").is_file()
+            or any(p.name == "package.json" for p in root.rglob("package.json") if not any(part in IGNORED_DIRECTORIES for part in p.parts))
+        )
+
         detected_frameworks: list[dict[str, Any]] = []
         for adapter in self._adapters:
             relevant_files = []
@@ -143,8 +176,13 @@ class LanguageRegistry:
                 for f in files_by_lang.get(adapter.language, []):
                     if f.suffix.lower() == ext:
                         relevant_files.append(f)
-            if relevant_files or (root / "package.json").is_file() or (root / "pyproject.toml").is_file():
-                detected_frameworks.extend(adapter.detect_frameworks(relevant_files, root))
+
+            if adapter.language == "Python":
+                if relevant_files or has_py_manifest:
+                    detected_frameworks.extend(adapter.detect_frameworks(relevant_files, root))
+            elif adapter.language == "JavaScript/TypeScript":
+                if relevant_files or has_js_manifest:
+                    detected_frameworks.extend(adapter.detect_frameworks(relevant_files, root))
 
         capability_matrix = self.build_capability_matrix(detected_languages, detected_frameworks)
 
@@ -153,6 +191,9 @@ class LanguageRegistry:
             "files_by_language": {lang: len(paths) for lang, paths in files_by_lang.items()},
             "frameworks": detected_frameworks,
             "capability_matrix": capability_matrix,
+            "file_count": file_count,
+            "file_limit": file_limit,
+            "scan_truncated": scan_truncated,
             "routes": all_routes,
             "client_calls": all_client_calls,
             "models": all_models,
@@ -163,5 +204,6 @@ class LanguageRegistry:
             "imports": sorted(set(all_imports)),
             "exports": sorted(set(all_exports)),
             "calls_made": sorted(set(all_calls_made)),
+            "feature_flags": all_feature_flags,
+            "feature_flag_consumers": sorted(all_feature_flag_consumers),
         }
-

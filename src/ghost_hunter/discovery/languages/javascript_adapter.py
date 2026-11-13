@@ -72,20 +72,27 @@ class JavaScriptAdapter(BaseLanguageAdapter):
 
     def detect_frameworks(self, files: list[Path], root: Path) -> list[dict[str, Any]]:
         signals: dict[str, str] = {}
-        pkg_path = root / "package.json"
-        if pkg_path.is_file():
-            try:
-                import json
-                pkg = json.loads(pkg_path.read_text(encoding="utf-8", errors="ignore"))
-                deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
-                if "next" in deps:
-                    signals["Next.js"] = "supported"
-                if "express" in deps:
-                    signals["Express"] = "supported"
-                if "react" in deps:
-                    signals["React"] = "supported"
-            except Exception:
-                pass
+        # Check root and nested package.json files for dependencies
+        pkg_paths = [root / "package.json"]
+        for p in root.rglob("package.json"):
+            if not any(part in (".next", "node_modules", "vendor", "dist", "build", "coverage", ".git") for part in p.parts):
+                if p not in pkg_paths:
+                    pkg_paths.append(p)
+
+        import json
+        for pkg_path in pkg_paths:
+            if pkg_path.is_file():
+                try:
+                    pkg = json.loads(pkg_path.read_text(encoding="utf-8", errors="ignore"))
+                    deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+                    if "next" in deps:
+                        signals["Next.js"] = "supported"
+                    if "express" in deps:
+                        signals["Express"] = "supported"
+                    if "react" in deps:
+                        signals["React"] = "supported"
+                except Exception:
+                    pass
 
         # Code content scan
         for path in files[:200]:

@@ -13,11 +13,13 @@ from typing import Any
 from ghost_hunter.discovery.languages.models import (
     ClientCall,
     ComponentDefinition,
+    FeatureFlagDefinition,
     RouteDefinition,
     UIAction,
     UnfinishedItem,
 )
 from ghost_hunter.discovery.languages.python_adapter import normalize_route_path
+from ghost_hunter.discovery.project import IGNORED_DIRECTORIES
 
 
 def match_route(endpoint: str, route_path: str) -> bool:
@@ -61,6 +63,8 @@ def detect_ghost_features(
     # Discover all known page paths (Next.js app/page, pages/, HTML files, and backend routes)
     known_destinations = set(registered_paths)
     for p in root.rglob("*"):
+        if any(part in IGNORED_DIRECTORIES or part.endswith(".egg-info") for part in p.parts):
+            continue
         if p.is_file():
             rel = p.relative_to(root).as_posix()
             if "pages/" in rel or "app/" in rel:
@@ -268,6 +272,61 @@ def detect_ghost_features(
                         "why_false_positive": "May be called via dynamic string dispatch, reflection, or in unanalyzed tests.",
                         "recommended_action": "Connect the service to an entry point or verify if it is deprecated.",
                     })
+
+    # 7. Feature Flag Analysis (Defined without consumers, or consumers without definitions)
+    feature_flags: list[FeatureFlagDefinition] = scan_data.get("feature_flags", [])
+    feature_flag_consumers: set[str] = set(scan_data.get("feature_flag_consumers", []))
+
+    for flag in feature_flags:
+        if flag.name not in feature_flag_consumers:
+            ghost_candidates.append({
+                "id": f"ghost-flag-{len(ghost_candidates) + 1}",
+                "category": "ghost_feature_candidate",
+                "chain_stage": "Feature Flag -> Conditional Consumer",
+                "severity": "Low",
+                "confidence": "Medium",
+                "finding_state": "Requires Owner Confirmation",
+                "evidence": flag.raw or f"{flag.name} defined in {flag.source}:{flag.line}",
+                "source": flag.source,
+                "line": flag.line,
+                "flag_name": flag.name,
+                "present_links": [
+                    f"Feature flag '{flag.name}' defined in {flag.source}:{flag.line}"
+                ],
+                "missing_links": [
+                    f"No conditional statements or feature consumers reference '{flag.name}' in the codebase"
+                ],
+                "explanation": f"Feature flag '{flag.name}' is defined in {flag.source}:{flag.line} but has no consumers.",
+                "potential_impact": "Orphaned or dead feature flag configuration.",
+                "why_false_positive": "Flag may be toggled externally via remote config, environment variables, or database flags.",
+                "recommended_action": "Verify with feature owner whether this flag is deprecated, deferred, or dead code.",
+            })
+
+    defined_names = {f.name for f in feature_flags}
+    for c_name in sorted(feature_flag_consumers):
+        if c_name not in defined_names:
+            ghost_candidates.append({
+                "id": f"ghost-missing-flag-{len(ghost_candidates) + 1}",
+                "category": "ghost_feature_candidate",
+                "chain_stage": "Conditional Consumer -> Feature Flag Definition",
+                "severity": "Medium",
+                "confidence": "Medium",
+                "finding_state": "Requires Owner Confirmation",
+                "evidence": f"Conditional reference: {c_name}",
+                "source": "codebase",
+                "line": 0,
+                "flag_name": c_name,
+                "present_links": [
+                    f"Conditional logic branches on '{c_name}'"
+                ],
+                "missing_links": [
+                    f"No static definition or default value found for '{c_name}' in the repository"
+                ],
+                "explanation": f"Feature flag '{c_name}' is consumed in conditional logic but has no static definition.",
+                "potential_impact": "Flag may evaluate to false/undefined or fail at runtime if environment variable is missing.",
+                "why_false_positive": "Flag may be injected dynamically via runtime environment variables or external configuration service.",
+                "recommended_action": "Ensure a default value or schema definition is declared for this flag.",
+            })
 
     return ghost_candidates
 
