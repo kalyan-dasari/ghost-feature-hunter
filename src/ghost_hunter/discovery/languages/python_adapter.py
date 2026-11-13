@@ -188,6 +188,8 @@ class PythonAdapter(BaseLanguageAdapter):
         imports: list[str] = []
         exports: list[str] = []
         calls_made: list[str] = []
+        feature_flags: list[FeatureFlagDefinition] = []
+        feature_flag_consumers: set[str] = set()
 
         try:
             content = file_path.read_text(encoding="utf-8", errors="ignore")
@@ -204,6 +206,8 @@ class PythonAdapter(BaseLanguageAdapter):
                 "imports": imports,
                 "exports": exports,
                 "calls_made": calls_made,
+                "feature_flags": feature_flags,
+                "feature_flag_consumers": list(feature_flag_consumers),
             }
 
         # Check comment markers (TODO, FIXME, XXX, HACK)
@@ -227,15 +231,35 @@ class PythonAdapter(BaseLanguageAdapter):
                         why_intentional="May be a planned future task or deliberate deferred functionality.",
                     ))
 
-        # Track __all__ exports if defined
+        # Track __all__ exports, Django urlpatterns, and feature flags if defined
+        FLAG_PATTERN = re.compile(r"^(FEATURE_|ENABLE_|FLAG_)[A-Z0-9_]+$")
         for node in ast.walk(tree):
             if isinstance(node, ast.Assign):
                 for target in node.targets:
-                    if isinstance(target, ast.Name) and target.id == "__all__":
-                        if isinstance(node.value, (ast.List, ast.Tuple, ast.Set)):
-                            for elt in node.value.elts:
-                                if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                                    exports.append(elt.value)
+                    if isinstance(target, ast.Name):
+                        if target.id == "__all__":
+                            if isinstance(node.value, (ast.List, ast.Tuple, ast.Set)):
+                                for elt in node.value.elts:
+                                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                                        exports.append(elt.value)
+                        elif target.id == "urlpatterns":
+                            self._extract_django_urlpatterns(node.value, rel_path, is_example, routes)
+                        elif FLAG_PATTERN.match(target.id):
+                            feature_flags.append(FeatureFlagDefinition(
+                                name=target.id,
+                                source=rel_path,
+                                line=target.lineno,
+                                is_defined=True,
+                                raw=ast.unparse(node) if hasattr(ast, "unparse") else target.id,
+                            ))
+
+            # Track feature flag conditional consumers (if FEATURE_X / if settings.FEATURE_X)
+            if isinstance(node, (ast.If, ast.IfExp)):
+                for test_node in ast.walk(node.test):
+                    if isinstance(test_node, ast.Name) and FLAG_PATTERN.match(test_node.id):
+                        feature_flag_consumers.add(test_node.id)
+                    elif isinstance(test_node, ast.Attribute) and FLAG_PATTERN.match(test_node.attr):
+                        feature_flag_consumers.add(test_node.attr)
 
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 if isinstance(node, ast.Import):
@@ -333,7 +357,63 @@ class PythonAdapter(BaseLanguageAdapter):
             "imports": imports,
             "exports": exports,
             "calls_made": calls_made,
+            "feature_flags": feature_flags,
+            "feature_flag_consumers": list(feature_flag_consumers),
         }
+
+    def _extract_django_urlpatterns(
+        self,
+        value_node: ast.expr,
+        rel_path: str,
+        is_example: bool,
+        routes: list[RouteDefinition],
+    ) -> None:
+        """Extract Django URL routes from urlpatterns = [path(...), re_path(...), include(...)]."""
+        elements: list[ast.expr] = []
+        if isinstance(value_node, (ast.List, ast.Tuple, ast.Set)):
+            elements = list(value_node.elts)
+        elif isinstance(value_node, ast.BinOp) and isinstance(value_node.op, ast.Add):
+            if isinstance(value_node.left, (ast.List, ast.Tuple)):
+                elements.extend(value_node.left.elts)
+            if isinstance(value_node.right, (ast.List, ast.Tuple)):
+                elements.extend(value_node.right.elts)
+
+        for elt in elements:
+            if not isinstance(elt, ast.Call):
+                continue
+            func_name = ""
+            if isinstance(elt.func, ast.Name):
+                func_name = elt.func.id
+            elif isinstance(elt.func, ast.Attribute):
+                func_name = elt.func.attr
+
+            if func_name in ("path", "re_path"):
+                if len(elt.args) >= 2:
+                    raw_pattern = ""
+                    if isinstance(elt.args[0], ast.Constant) and isinstance(elt.args[0].value, str):
+                        raw_pattern = elt.args[0].value
+
+                    view_arg = elt.args[1]
+                    view_repr = ast.unparse(view_arg) if hasattr(ast, "unparse") else "view"
+
+                    if func_name == "re_path":
+                        cleaned = raw_pattern.strip("^$")
+                        cleaned = re.sub(r"\(\?P<([a-zA-Z0-9_]+)>[^)]+\)", r"{\1}", cleaned)
+                        norm_path = normalize_route_path(cleaned)
+                    else:
+                        norm_path = normalize_route_path(raw_pattern)
+
+                    routes.append(RouteDefinition(
+                        path=norm_path,
+                        methods=["ALL"],
+                        function=view_repr,
+                        source=rel_path,
+                        line=elt.lineno,
+                        framework="Django",
+                        is_example=is_example,
+                        is_empty_or_unfinished=False,
+                        raw_decorator=f"{func_name}({raw_pattern!r}, {view_repr})",
+                    ))
 
     def _process_function(
         self,

@@ -14,6 +14,7 @@ from ghost_hunter.discovery.languages.base import BaseLanguageAdapter
 from ghost_hunter.discovery.languages.models import (
     ClientCall,
     ComponentDefinition,
+    FeatureFlagDefinition,
     ModelDefinition,
     RouteDefinition,
     SymbolDefinition,
@@ -41,6 +42,14 @@ class JavaScriptAdapter(BaseLanguageAdapter):
 
     def get_capabilities(self) -> dict[str, bool]:
         return {
+            "route_extraction": True,
+            "symbol_analysis": True,
+            "ui_analysis": True,
+            "reference_analysis": True,
+            "duplicate_detection": False,  # Duplicate detection is Python AST only
+            "unfinished_code_detection": True,
+            "dependency_analysis": True,
+            # Backwards compatibility flags
             "file_identification": True,
             "framework_identification": True,
             "import_export_discovery": True,
@@ -124,6 +133,8 @@ class JavaScriptAdapter(BaseLanguageAdapter):
         imports: list[str] = []
         exports: list[str] = []
         calls_made: list[str] = []
+        feature_flags: list[FeatureFlagDefinition] = []
+        feature_flag_consumers: set[str] = set()
 
         try:
             content = file_path.read_text(encoding="utf-8", errors="ignore")
@@ -139,6 +150,8 @@ class JavaScriptAdapter(BaseLanguageAdapter):
                 "imports": imports,
                 "exports": exports,
                 "calls_made": calls_made,
+                "feature_flags": feature_flags,
+                "feature_flag_consumers": list(feature_flag_consumers),
             }
 
         lines = content.splitlines()
@@ -320,84 +333,128 @@ class JavaScriptAdapter(BaseLanguageAdapter):
                     ))
 
         # 7. UI Actions, Buttons & Form Connections (React / JSX / HTML)
-        button_pattern = re.compile(r"""<(?:button|Button)[^>]*>(.*?)</(?:button|Button)>""", re.IGNORECASE)
-        for line_num, line in enumerate(lines, 1):
-            # Check button
-            if "<button" in line.lower():
-                # Check for empty handler: onClick={() => {}} or onClick={() => { /* nothing */ }}
-                has_empty_click = bool(re.search(r"""onClick\s*=\s*\{(?:\(\s*\)\s*=>\s*\{|\s*function\s*\(\s*\)\s*\{)\s*\}""", line))
-                has_no_click = "onClick" not in line and "type=\"submit\"" not in line and "type='submit'" not in line
+        # Parse multiline forms to identify working forms and unhandled forms
+        working_form_spans: list[tuple[int, int]] = []
+        form_pattern = re.compile(r"""<form\b([\s\S]*?)>([\s\S]*?)</form>""", re.IGNORECASE)
+        for form_match in form_pattern.finditer(content):
+            form_attrs = form_match.group(1)
+            form_body = form_match.group(2)
+            start_pos = form_match.start()
+            end_pos = form_match.end()
+            line_num = content.count("\n", 0, start_pos) + 1
 
-                btn_match = button_pattern.search(line)
-                label = btn_match.group(1).strip() if btn_match else "Button"
-                # Strip nested tags if any
-                label = re.sub(r"<[^>]+>", "", label).strip() or "Button"
+            has_action = bool(re.search(r"""\baction\s*=""", form_attrs, re.IGNORECASE))
+            has_onsubmit = bool(re.search(r"""\bon(?:S|s)ubmit\s*=""", form_attrs, re.IGNORECASE))
 
-                if has_empty_click:
-                    ui_actions.append(UIAction(
-                        action_type="button",
-                        label=label,
-                        target="empty_inline_handler",
-                        source=rel_path,
-                        line=line_num,
-                        raw=line.strip(),
-                        is_empty_handler=True,
-                        has_handler=True,
-                    ))
-                    unfinished.append(UnfinishedItem(
-                        item_type="empty_handler",
-                        name=f"Button '{label}' empty onClick",
-                        source=rel_path,
-                        line=line_num,
-                        evidence=line.strip(),
-                        explanation=f"UI button '{label}' has an empty or no-op inline handler (onClick={{() => {{}}}}).",
-                        confidence="High",
-                        is_abstract_or_protocol=False,
-                        why_intentional="May be a UI mockup or placeholder waiting for backend integration.",
-                    ))
-                elif has_no_click and "<form" not in line:
-                    ui_actions.append(UIAction(
-                        action_type="button",
-                        label=label,
-                        target="none",
-                        source=rel_path,
-                        line=line_num,
-                        raw=line.strip(),
-                        is_empty_handler=False,
-                        has_handler=False,
-                    ))
-
-            # Check Navigation links: <Link href="/..."> or <a href="/...">
-            link_match = re.search(r"""<(?:Link|a)\s+[^>]*\bhref\s*=\s*['"]([^'"]+)['"][^>]*>(.*?)</(?:Link|a)>""", line, re.IGNORECASE)
-            if link_match:
-                target_url = link_match.group(1).strip()
-                link_label = re.sub(r"<[^>]+>", "", link_match.group(2)).strip() or target_url
-                if target_url.startswith("/") and not target_url.startswith(("//", "/#", "/_")):
-                    ui_actions.append(UIAction(
-                        action_type="link",
-                        label=link_label,
-                        target=normalize_route_path(target_url),
-                        source=rel_path,
-                        line=line_num,
-                        raw=line.strip(),
-                        has_handler=True,
-                    ))
-
-            # Check Form without submission: <form> with inputs but no onSubmit or action
-            if "<form" in line.lower():
-                has_action = "action=" in line.lower()
-                has_onsubmit = "onsubmit=" in line.lower()
-                if not has_action and not has_onsubmit:
+            if has_action or has_onsubmit:
+                working_form_spans.append((start_pos, end_pos))
+            else:
+                has_inputs = bool(re.search(r"""<(?:input|select|textarea|button|Button)\b""", form_body, re.IGNORECASE))
+                if has_inputs:
                     ui_actions.append(UIAction(
                         action_type="form",
                         label="Form",
                         target="none",
                         source=rel_path,
                         line=line_num,
-                        raw=line.strip(),
+                        raw=content[start_pos:min(start_pos + 200, end_pos)].strip(),
                         is_empty_handler=True,
                         has_handler=False,
                     ))
+
+        # Parse multiline buttons
+        btn_pattern = re.compile(r"""<(?:button|Button)\b([\s\S]*?)>([\s\S]*?)</(?:button|Button)>""", re.IGNORECASE)
+        for btn_match in btn_pattern.finditer(content):
+            btn_attrs = btn_match.group(1)
+            btn_body = btn_match.group(2)
+            start_pos = btn_match.start()
+            line_num = content.count("\n", 0, start_pos) + 1
+
+            label = re.sub(r"<[^>]+>", "", btn_body).strip() or "Button"
+            is_submit_type = bool(re.search(r"""\btype\s*=\s*['"]submit['"]""", btn_attrs, re.IGNORECASE))
+            in_working_form = any(f_start <= start_pos <= f_end for f_start, f_end in working_form_spans)
+            is_button_type = bool(re.search(r"""\btype\s*=\s*['"]button['"]""", btn_attrs, re.IGNORECASE))
+
+            has_click_attr = "onclick" in btn_attrs.lower()
+            empty_click = bool(re.search(
+                r"""onClick\s*=\s*\{(?:\(\s*\)\s*=>\s*\{|\s*function\s*\(\s*\)\s*\{)\s*\}""",
+                btn_attrs
+            ))
+
+            if empty_click:
+                ui_actions.append(UIAction(
+                    action_type="button",
+                    label=label,
+                    target="empty_inline_handler",
+                    source=rel_path,
+                    line=line_num,
+                    raw=content[start_pos:min(start_pos + 150, btn_match.end())].strip(),
+                    is_empty_handler=True,
+                    has_handler=True,
+                ))
+                unfinished.append(UnfinishedItem(
+                    item_type="empty_handler",
+                    name=f"Button '{label}' empty onClick",
+                    source=rel_path,
+                    line=line_num,
+                    evidence=content[start_pos:min(start_pos + 150, btn_match.end())].strip(),
+                    explanation=f"UI button '{label}' has an empty or no-op inline handler (onClick={{() => {{}}}}).",
+                    confidence="High",
+                    is_abstract_or_protocol=False,
+                    why_intentional="May be a UI mockup or placeholder waiting for backend integration.",
+                ))
+            elif has_click_attr:
+                ui_actions.append(UIAction(
+                    action_type="button",
+                    label=label,
+                    target="handler",
+                    source=rel_path,
+                    line=line_num,
+                    raw=content[start_pos:min(start_pos + 150, btn_match.end())].strip(),
+                    is_empty_handler=False,
+                    has_handler=True,
+                ))
+            elif is_submit_type or (in_working_form and not is_button_type):
+                ui_actions.append(UIAction(
+                    action_type="button",
+                    label=label,
+                    target="form_submit",
+                    source=rel_path,
+                    line=line_num,
+                    raw=content[start_pos:min(start_pos + 150, btn_match.end())].strip(),
+                    is_empty_handler=False,
+                    has_handler=True,
+                ))
+            else:
+                ui_actions.append(UIAction(
+                    action_type="button",
+                    label=label,
+                    target="none",
+                    source=rel_path,
+                    line=line_num,
+                    raw=content[start_pos:min(start_pos + 150, btn_match.end())].strip(),
+                    is_empty_handler=False,
+                    has_handler=False,
+                ))
+
+        # Navigation links: <Link href="/..."> or <a href="/...">
+        link_pattern = re.compile(r"""<(?:Link|a)\s+[^>]*\bhref\s*=\s*['"]([^'"]+)['"][^>]*>([\s\S]*?)</(?:Link|a)>""", re.IGNORECASE)
+        for link_match in link_pattern.finditer(content):
+            target_url = link_match.group(1).strip()
+            link_body = link_match.group(2)
+            link_label = re.sub(r"<[^>]+>", "", link_body).strip() or target_url
+            start_pos = link_match.start()
+            line_num = content.count("\n", 0, start_pos) + 1
+            if target_url.startswith("/") and not target_url.startswith(("//", "/#", "/_")):
+                ui_actions.append(UIAction(
+                    action_type="link",
+                    label=link_label,
+                    target=normalize_route_path(target_url),
+                    source=rel_path,
+                    line=line_num,
+                    raw=content[start_pos:min(start_pos + 150, link_match.end())].strip(),
+                    has_handler=True,
+                ))
 
         # 8. Placeholder Rendering (e.g. <div>TODO</div>, <div>Coming Soon</div>)
         placeholder_render_pattern = re.compile(
@@ -488,6 +545,26 @@ class JavaScriptAdapter(BaseLanguageAdapter):
                     why_intentional="May be intentionally ignoring a benign or expected exception.",
                 ))
 
+        # 12. Feature flag detection (FEATURE_*, ENABLE_*, FLAG_*)
+        flag_pattern = re.compile(r"\b((?:FEATURE_|ENABLE_|FLAG_)[A-Z0-9_]+)\b")
+        for idx, line in enumerate(lines, 1):
+            def_match = re.search(r"""(?:const|let|var)\s+((?:FEATURE_|ENABLE_|FLAG_)[A-Z0-9_]+)\s*=""", line)
+            if def_match:
+                flag_name = def_match.group(1)
+                feature_flags.append(FeatureFlagDefinition(
+                    name=flag_name,
+                    source=rel_path,
+                    line=idx,
+                    is_defined=True,
+                    raw=line.strip(),
+                ))
+            if re.search(r"""\b(?:if\s*\(|switch\s*\(|\?|&&|\|\|)""", line):
+                for flag_m in flag_pattern.finditer(line):
+                    fname = flag_m.group(1)
+                    if def_match and fname == def_match.group(1):
+                        continue
+                    feature_flag_consumers.add(fname)
+
         return {
             "routes": routes,
             "client_calls": client_calls,
@@ -499,4 +576,6 @@ class JavaScriptAdapter(BaseLanguageAdapter):
             "imports": imports,
             "exports": exports,
             "calls_made": calls_made,
+            "feature_flags": feature_flags,
+            "feature_flag_consumers": list(feature_flag_consumers),
         }
