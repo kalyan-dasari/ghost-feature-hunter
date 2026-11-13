@@ -202,3 +202,4 @@ def detect_project_context(
             "Dynamic imports, reflection, and runtime plugin hooks require manual verification.",
         ],
     }
+
