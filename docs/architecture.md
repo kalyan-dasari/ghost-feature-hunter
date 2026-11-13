@@ -128,3 +128,34 @@ To award a `PASS` status to a stateful checkpoint, the runner or agent must sati
 1. **Pre-action Baseline:** The state prior to action must be explicitly observed and recorded.
 2. **Post-action State:** The state subsequent to action must be explicitly observed.
 3. **Verifiable Delta:** The delta must affirmatively match the authoritative requirement specification. Missing baseline data degrades the status to `UNKNOWN`.
+
+---
+
+## 6. Language & Framework Adapter Architecture
+
+Ghost Hunt separates file-level language identification from actual analysis capabilities via a pluggable adapter registry (`src/ghost_hunter/discovery/languages/`):
+
+```mermaid
+flowchart TD
+  Files[Discovered Project Files] --> Reg[Language Registry]
+  Reg --> PyAdapt[Python Adapter: Flask, FastAPI, Django]
+  Reg --> JSAdapt[JavaScript/TypeScript Adapter: Express, Next.js, React]
+  Reg --> Fallback[Inventory-Only Fallback: Go, Rust, Java, etc.]
+  
+  PyAdapt --> Extract[Routes, Models, Symbols, Unfinished Items]
+  JSAdapt --> Extract
+  Fallback --> Inv[File Counts & Manifest Inventory]
+  
+  Extract & Inv --> Matrix[Language / Framework Capability Matrix]
+```
+
+Each adapter implements `BaseLanguageAdapter` and declares its exact implemented capabilities (`file_identification`, `framework_identification`, `backend_route_extraction`, `frontend_api_call_extraction`, `empty_unfinished_detection`, etc.). Unsupported languages are reported honestly as `partial` with explicit analysis limitations.
+
+---
+
+## 7. Ghost Feature Connection Graph & Structural Duplicate Normalization
+
+Ghost features are detected by mapping the 8-layer connection chain across UI navigation, action controls, client requests, backend routes, and service logic.
+
+### Structural Duplicate Detection
+Rather than grouping functions by name (which fails to detect duplicates with different names and falsely flags distinct implementations with identical names), Ghost Hunt strips docstrings and normalizes AST statement sequences (`_normalize_ast_body`). Functions sharing identical normalized bodies are flagged as structural duplicates, and waste line counts strictly exclude overlapping lines.
