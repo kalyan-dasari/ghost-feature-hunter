@@ -321,3 +321,4 @@ def compute_order_tax(subtotal):
     assert len(dup["occurrences"]) == 2
     # Estimated waste is for the 1 duplicate copy, not both!
     assert dup["estimated_waste_lines"] == dup["occurrences"][1]["line_count"]
+

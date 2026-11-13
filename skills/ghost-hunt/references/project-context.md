@@ -67,3 +67,4 @@ Every Ghost Hunt audit report must begin with this standardized block:
 - **Available Capabilities:** `<native_tools_available (file, shell, curl, browser)>`
 - **Limitations:** `<unsupported_runtimes_or_mocked_services>`
 ```
+
