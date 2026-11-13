@@ -44,24 +44,29 @@ Keep `SKILL.md`, `references/`, `templates/`, and `examples/` together in the di
 
 ## 3. How to Invoke in Antigravity Chat
 
-In any Antigravity conversation or IDE session, invoke the skill directly:
+In any Antigravity conversation or IDE session, invoke the skill directly using any of its four modes:
 
 ```text
-/ghost-hunt
-```
+# 1. Project discovery & feature inventory
+/ghost-hunt discover
 
-Or trigger specific feature investigations:
-
-```text
+# 2. Deep feature investigation & verification
 /ghost-hunt investigate checkout
-/ghost-hunt investigate user-registration
-/ghost-hunt investigate payment-webhooks
+
+# 3. Whole-repository route & architecture audit
+/ghost-hunt audit
+
+# 4. Regression & fix verification
+/ghost-hunt verify checkout
 ```
+
+*(If you invoke bare `/ghost-hunt investigate`, Ghost Hunt detects your project context, locks scope away from example fixtures, and asks for a feature target).*
 
 Or ask in natural language:
 
 ```text
 "Investigate my checkout feature and verify whether order persistence works."
+"Audit the repository for missing routes, unused endpoints, and testing gaps."
 ```
 
 Antigravity executes the investigation using its native tools (file reader, shell/terminal commands, `curl`, browser tool).

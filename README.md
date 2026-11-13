@@ -67,18 +67,49 @@ Keep `SKILL.md`, `references/`, `templates/`, and `examples/` together in the di
 
 ## 🚀 How to Invoke in Chat
 
-Once installed, open your coding agent in your project workspace and invoke Ghost Hunt naturally:
+Once installed, open your coding agent in your project workspace and invoke Ghost Hunt using one of its four modes:
 
-```text
-/ghost-hunt investigate checkout
-```
+| Mode | Command | What It Does |
+|---|---|---|
+| **Feature Discovery** | `/ghost-hunt discover` | Statically inspects the project, detects frameworks, maps route architecture, and presents available features without executing code. |
+| **Feature Investigation** | `/ghost-hunt investigate <feature>` | Performs deep, end-to-end data flow tracing and active verification of a specific feature across frontend, API, services, and database. |
+| **Repository Audit** | `/ghost-hunt audit` | Performs a whole-repository static audit: maps route connections, detects missing route candidates, identifies potentially unused endpoints, flags duplicate code, and discovers testing gaps. |
+| **Verification & Fix** | `/ghost-hunt verify <feature>` | Runs targeted regression checks for a previously identified defect, reviews proposed surgical fixes, and verifies fix efficacy. |
 
-Or ask in natural language:
+*(Codex users: use `$ghost-hunt` prefix).*
+
+### Bare Invocation Safety Guard
+If you invoke `/ghost-hunt investigate` without specifying a feature target:
+1. Ghost Hunt locks scope to your **actual active project** (reading `git rev-parse --show-toplevel`, project manifests, and package names).
+2. It explicitly ignores bundled example fixtures (such as `examples/`, `fixtures/`, `benchmarks/`).
+3. It presents a standardized **Project Context Summary**, performs lightweight discovery, and prompts you to select a feature to investigate. **It never arbitrarily picks a benchmark or demo application.**
+
+You can also ask in natural language:
 - *"Investigate my checkout feature and verify whether inventory deduction works."*
+- *"Audit the repository for disconnected routes, unused endpoints, and untested core logic."*
 - *"Verify user registration: check password hashing, email uniqueness, and 400 validation responses."*
-- *"Audit payment webhooks and verify order state transitions."*
 
-The skill executes immediately using your agent's native tools.
+---
+
+## 🌟 The Three Core Capabilities
+
+1. **Project Discovery & Scope Lock:** Understands project structure before selecting targets. Distinguishes monorepo workspaces and benchmark fixtures from primary application code.
+2. **Individual Feature Investigation:** Traces cross-boundary data flow, isolates stateful test scenarios to prevent contamination, and validates expectations against authoritative requirement sources.
+3. **Whole-Repository Static Audit:** Analyzes route connections across frontend and backend, flags missing route candidates, surfaces unreferenced endpoints with proper dynamic-loading caveats, and calculates conservative code waste estimates.
+
+---
+
+## 🔍 Clear Finding Classifications
+
+Ghost Hunt clearly distinguishes between different classes of findings so developers can act with confidence:
+
+| Finding Category | Meaning | Confidence | Required Action |
+|---|---|---|---|
+| **Confirmed Defect (`FAIL`)** | Real runtime check failed against an authoritative requirement. | High / Evidence-backed | Propose surgical fix diff with line references. |
+| **Missing Route Candidate** | Frontend or client code calls an endpoint (`fetch`, `axios`) that has no matching backend route. | Medium / Static Candidate | Confirm whether route is handled externally or missing. |
+| **Potentially Unused Route** | Backend route defined but no references found in codebase. | Low / Heuristic Candidate | Verify against external webhooks, mobile clients, and dynamic dispatch before removal. |
+| **Testing Gap** | Critical business logic or mutation route has zero test coverage in the existing test suite. | High / Measurable | Author targeted regression tests. |
+| **Inferred Assumption** | Expected behavior deduced from code patterns or naming rather than explicit specs. | Unconfirmed Hypothesis | **Evaluates to UNKNOWN, never PASS or FAIL.** Must be confirmed by project owner. |
 
 ---
 
@@ -135,34 +166,62 @@ Ghost Hunt classifies every verification checkpoint into exactly one of three st
 
 ## 📊 Example Evidence-Backed Result
 
-Here is an excerpt from a real Ghost Hunt audit report:
+Every Ghost Hunt report begins with a mandatory **Project Context Summary** locking the target scope, followed by checkpoint findings and isolated defects:
 
 ```markdown
-# Ghost Hunt: Checkout Feature Audit Report
+# Ghost Hunt: Feature Audit Report
+
+### Project Context Summary
+| Property | Value |
+|---|---|
+| **Detected Project Name** | `broken-flask-shop` |
+| **Project Root** | `examples/broken-flask-shop` |
+| **Git Root** | `/workspace/ghost-feature-hunter` |
+| **Application Type** | `Flask (Python)` |
+| **Investigation Target** | `checkout` (`/api/checkout`, `POST`) |
+| **Target Classification** | `Benchmark / Example Application` |
+
+---
+
+### Verification Summary
 - **Feature:** checkout
-- **Status:** FAIL (2 confirmed defects isolated)
-- **Checkpoints:** 5 Total | 3 PASS | 2 FAIL | 0 UNKNOWN
+- **Status:** FAIL (3 confirmed defects isolated)
+- **Checkpoints:** 5 Total | 2 PASS | 3 FAIL | 0 UNKNOWN
 
 ### Checkpoint Breakdown
-| Checkpoint | Expected | Observed | Status | Evidence |
-|---|---|---|---|---|
-| `cart-tax` | `total_cents: 1100` | `total_cents: 1200` | FAIL | HTTP 200 response |
-| `idempotency` | HTTP 201 on first, 409 on replay | HTTP 201, then HTTP 409 | PASS | HTTP responses |
-| `quantity-val` | HTTP 400 on negative qty | HTTP 201 Created | FAIL | Order ord-883 created |
-| `persistence` | 1 confirmed row in SQLite | 1 row, state='confirmed' | PASS | sqlite3 query |
-| `inventory` | Stock decremented by 2 | Stock 10 -> 8 | PASS | sqlite3 query |
+| Checkpoint | Expected | Observed | Status | Source | Evidence |
+|---|---|---|---|---|---|
+| `cart-tax` | `total_cents: 1100` | `total_cents: 1200` | FAIL | `api_contract` | HTTP 200 response |
+| `idempotency` | HTTP 201 on first, 409 on replay | HTTP 201, then HTTP 409 | PASS | `product_documentation` | HTTP responses |
+| `quantity-val` | HTTP 400 on negative qty | HTTP 201 Created (ord-883) | FAIL | `product_documentation` | HTTP 201 response |
+| `persistence` | 1 confirmed row in SQLite | 1 row, state='confirmed' | PASS | `api_contract` | sqlite3 query |
+| `inventory-qty`| Stock decremented by 2 (10 -> 8) | Stock decremented by 1 (10 -> 9) | FAIL | `product_documentation` | sqlite3 before/after delta |
 
-### Confirmed Defect: Double Tax Calculation (`cart-tax`)
-- **Location:** `app.py:L84-L90`
-- **Root Cause:** In `calculate_cart()`, the tax variable is added twice to subtotal (`total = subtotal + tax + tax`).
+### Confirmed Defect: Inadequate Inventory Deduction (`inventory-qty`)
+- **Location:** `app.py:L180-L184`
+- **Root Cause:** The SQL update unconditionally decrements stock by 1 unit (`stock = MAX(stock - 1, 0)`) instead of subtracting the cart item's actual requested quantity.
 - **Recommended Minimal Fix:**
   ```diff
-  - total = subtotal + tax + tax
-  + total = subtotal + tax
+  - UPDATE products SET stock = MAX(stock - 1, 0) WHERE id = ?
+  + UPDATE products SET stock = MAX(stock - ?, 0) WHERE id = ?
   ```
 ```
 
 👉 **[Read the Full Checkout Investigation Walkthrough](skills/ghost-hunt/examples/checkout-investigation.md)**
+
+---
+
+## 🔒 Stateful Scenario Isolation & False PASS Prevention
+
+Testing stateful workflows (e.g., checkout, order processing, inventory decrement) introduces a critical failure mode: **test state contamination**.
+
+If test steps run sequentially against the same database, mutations from earlier checks can contaminate the initial state of subsequent checks. In a naive test run, an earlier negative-quantity check unexpectedly decremented stock from 10 to 9. A subsequent check requesting 2 units then reduced stock from 9 to 8. A naive assertion checking only `stock == 8` evaluated to `PASS`—falsely masking that purchasing 2 units had only decremented 1 unit!
+
+Ghost Hunt eliminates false PASS results through four isolation rules:
+1. **Fresh Disposable State:** Every stateful scenario starts with a freshly seeded database copy or transaction rollback.
+2. **Explicit Baseline Measurement:** The agent measures the baseline state *before* execution (e.g., `initial_stock = 10`), executes the action (quantity = 2), and measures the delta *after* execution (`final_stock = 9`).
+3. **Delta Assertions:** Assertions verify the exact transition (`final == initial - quantity`), never just the ending absolute value.
+4. **PASS Evidence Contract:** `PASS` requires verifiable before/after data proving the expected transition occurred. Missing baseline evidence degrades the status to `UNKNOWN`.
 
 ---
 
@@ -197,6 +256,9 @@ ghost-hunter init --project-root .
 
 # Advisory static discovery
 ghost-hunter discover --project-root .
+
+# Static route connection and hygiene audit
+ghost-hunter audit-routes --project-root .
 
 # Execute verification journey
 ghost-hunter audit checkout --project-root .

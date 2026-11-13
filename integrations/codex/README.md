@@ -40,24 +40,29 @@ Keep `SKILL.md`, `references/`, `templates/`, and `examples/` together in the di
 
 ## 3. How to Invoke in Codex
 
-In Codex, invoke using the `$skill` command format:
+In Codex, invoke using the `$skill` command format with any of the four execution modes:
 
 ```text
-$ghost-hunt
-```
+# 1. Project discovery & feature inventory
+$ghost-hunt discover
 
-Or run an explicit feature investigation:
-
-```text
+# 2. Deep feature investigation & verification
 $ghost-hunt investigate checkout
-$ghost-hunt investigate user-registration
-$ghost-hunt investigate payment-processing
+
+# 3. Whole-repository route & architecture audit
+$ghost-hunt audit
+
+# 4. Regression & fix verification
+$ghost-hunt verify checkout
 ```
+
+*(If you invoke bare `$ghost-hunt investigate`, Ghost Hunt detects your project context, locks scope away from example fixtures, and asks for a feature target).*
 
 Or ask in natural language:
 
 ```text
 "Investigate our checkout feature and verify whether inventory deduction works."
+"Audit the repository for missing routes, unused endpoints, and testing gaps."
 ```
 
 Codex executes the investigation using its native sandbox tools, file reading, and terminal execution.

@@ -119,12 +119,34 @@ npx skills remove ghost-hunt -g
 
 ## 3. Using the Skill in Chat
 
-Open your coding agent in your project workspace and invoke:
+Open your coding agent in your project workspace and invoke Ghost Hunt using one of its four execution modes:
 
-- **Google Antigravity:** `/ghost-hunt` or `/ghost-hunt investigate checkout`
-- **Anthropic Claude Code:** `/ghost-hunt` or `/ghost-hunt investigate checkout`
-- **OpenAI Codex:** `$ghost-hunt` or `$ghost-hunt investigate checkout`
-- **Natural Language:** *"Investigate my checkout feature and verify whether inventory deduction works."*
+```text
+# 1. Project & Feature Discovery
+/ghost-hunt discover
+
+# 2. End-to-End Feature Investigation
+/ghost-hunt investigate checkout
+
+# 3. Whole-Repository Static Audit
+/ghost-hunt audit
+
+# 4. Fix Verification & Regression Check
+/ghost-hunt verify checkout
+```
+
+*(For OpenAI Codex, replace `/ghost-hunt` with `$ghost-hunt`).*
+
+### Bare Invocation Guard
+If you run `/ghost-hunt investigate` without parameters, Ghost Hunt will:
+1. Detect and lock your project root and Git context.
+2. Filter out bundled benchmark or example directories (such as `examples/broken-flask-shop`).
+3. Display the Project Context Summary and ask you to select a feature to investigate.
+
+You can also invoke in natural language:
+- *"Investigate my checkout feature and verify whether inventory deduction works."*
+- *"Audit the repository for route mismatches, unused endpoints, and testing gaps."*
+- *"Verify user registration: check password hashing, email uniqueness, and 400 validation responses."*
 
 The skill executes immediately using your agent's native tools (file reading, terminal commands, `curl`, test runners, and browser).
 
@@ -138,7 +160,7 @@ The skill executes immediately using your agent's native tools (file reading, te
 
 ## 4. Optional Deterministic CLI Verification Engine
 
-If you want hermetic, automated verification journeys for CI pipelines and schema-validated JSON reports, install the optional `ghost-hunter` Python package.
+If you want hermetic, automated verification journeys for CI pipelines and schema-validated JSON reports, install the optional `ghost-feature-hunter` Python package.
 
 ### Prerequisites
 - **Python 3.11+**
@@ -165,6 +187,9 @@ ghost-hunter init --project-root .
 
 # Advisory static discovery
 ghost-hunter discover --project-root .
+
+# Static route connection and hygiene audit
+ghost-hunter audit-routes --project-root .
 
 # Execute verification journey
 ghost-hunter audit <feature> --project-root .

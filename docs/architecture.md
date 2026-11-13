@@ -55,9 +55,76 @@ Each adapter implements the `BaseAdapter` interface:
 
 ---
 
-## 3. Core Verification Invariants
+---
 
-1. **Zero Inference of Requirements:** Static code analysis discovers structure, not authoritative business requirements. Expectations must be anchored to explicit sources.
-2. **Zero False Positives:** `PASS` is awarded only when an assertion is affirmatively validated by observed runtime data.
-3. **Honest Unknowns:** When tools, browsers, services, or permissions are unavailable, the checkpoint must remain `UNKNOWN`. It is never relabeled as PASS or FAIL.
-4. **Non-Destructive Defaults:** Code modifications, database writes, and external reports require explicit operator authorization.
+## 4. Repository Audit Architecture & Scope Lock
+
+Ghost Hunt includes a static audit architecture designed to analyze an entire repository without running untrusted code:
+
+```mermaid
+flowchart TD
+  Target[Target Workspace] --> Scope[Scope Lock: detect_project_context]
+  Scope --> Filter{Is Example / Benchmark?}
+  Filter -->|Yes| TagExample[Tag as Benchmark / Exclude from Primary Audit]
+  Filter -->|No| AppRoutes[Primary Application Routes]
+  
+  Target --> ClientScan[Client API Call Scanner]
+  ClientScan --> ExtractedCalls[Extracted Client Calls: fetch, axios, form action]
+  
+  AppRoutes --> Matrix[Route Connection Matrix]
+  ExtractedCalls --> Matrix
+  
+  Matrix --> Missing[Missing Route Candidates]
+  Matrix --> Unused[Potentially Unused Endpoints]
+  Matrix --> Uncovered[Testing Gaps]
+  
+  Target --> ASTDup[AST Subtree Duplicate Estimator]
+  ASTDup --> Waste[Conservative Code Waste Estimate]
+```
+
+### Scope Lock & Project Detection
+When analyzing repositories with nested subprojects, benchmarks, or monorepos, `detect_project_context()` establishes a verifiable scope lock:
+1. **Repository vs Application Root:** Distinguishes the top-level Git repository from the application subpackage.
+2. **Benchmark Isolation:** Directories named `examples/`, `fixtures/`, `benchmarks/`, or `demos/` are classified as non-primary targets. A bare `/ghost-hunt investigate` command will never default to a benchmark fixture.
+3. **Explicit Override:** If the developer specifies a target path (`/ghost-hunt investigate checkout in src/backend`), the explicit path overrides directory heuristics.
+
+### Route Connection Analysis
+1. **Frontend Call Extraction:** Statically parses JavaScript, TypeScript, JSX, TSX, HTML templates, and Python views for HTTP requests (`fetch('/api/...')`, `axios.get(...)`, `<form action="...">`).
+2. **Backend Route Discovery:** Parses framework decorators (`@app.route`, FastAPI routes, Express handlers) to extract route paths, HTTP methods, and parameter shapes.
+3. **Cross-Boundary Matching:** Cross-references client calls against backend routes to surface:
+   - **Missing Route Candidates:** Frontend calls an endpoint that has no corresponding backend route.
+   - **Method Mismatches:** Frontend calls an endpoint with `POST`, but the backend only accepts `GET`.
+   - **Potentially Unused Endpoints:** Backend routes with no detected caller references.
+   - **Testing Gaps:** Mutation endpoints (`POST`, `PUT`, `DELETE`) with zero assertions in the existing test suite.
+
+---
+
+## 5. Stateful Scenario Isolation & Baseline Evidence Architecture
+
+Stateful features (checkout, inventory, balance transfer, state machines) are susceptible to **test state contamination**, where side effects from prior checks pollute subsequent checks and create false positives.
+
+```mermaid
+sequenceDiagram
+  participant Runner as Verification Runner
+  participant DB as Disposable Database
+  participant App as Target Application
+  
+  Note over Runner,DB: Scenario Preflight
+  Runner->>DB: Seed fresh disposable state (isolated copy)
+  Runner->>DB: Query baseline state (e.g. initial_stock = 10)
+  
+  Note over Runner,App: Execution
+  Runner->>App: Execute mutating check (order qty = 2)
+  App->>DB: Mutate state (e.g. stock update)
+  
+  Note over Runner,DB: Delta Verification
+  Runner->>DB: Query final state (final_stock = 9)
+  Runner->>Runner: Evaluate delta: expected 10 - 2 = 8, observed 9 (FAIL)
+  Note over Runner,DB: Reset state for next scenario
+```
+
+### The PASS Evidence Contract
+To award a `PASS` status to a stateful checkpoint, the runner or agent must satisfy three criteria:
+1. **Pre-action Baseline:** The state prior to action must be explicitly observed and recorded.
+2. **Post-action State:** The state subsequent to action must be explicitly observed.
+3. **Verifiable Delta:** The delta must affirmatively match the authoritative requirement specification. Missing baseline data degrades the status to `UNKNOWN`.
