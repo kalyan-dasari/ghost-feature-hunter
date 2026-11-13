@@ -9,7 +9,13 @@ from ghost_hunter.discovery.languages.base import BaseLanguageAdapter
 from ghost_hunter.discovery.languages.javascript_adapter import JavaScriptAdapter
 from ghost_hunter.discovery.languages.models import FeatureFlagDefinition
 from ghost_hunter.discovery.languages.python_adapter import PythonAdapter
-from ghost_hunter.discovery.project import IGNORED_DIRECTORIES, is_example_or_fixture
+from ghost_hunter.discovery.project import (
+    IGNORED_DIRECTORIES,
+    classify_source_role,
+    detect_application_boundaries,
+    is_example_or_fixture,
+    resolve_file_scope,
+)
 
 LANGUAGE_EXTENSIONS: dict[str, str] = {
     ".py": "Python",
@@ -101,8 +107,9 @@ class LanguageRegistry:
         return matrix
 
     def scan_repository(self, project_root: Path, file_limit: int = 15000) -> dict[str, Any]:
-        """Deep multi-language scan across the entire project root."""
+        """Deep multi-language scan across the entire project root with application boundaries and source roles."""
         root = project_root.resolve()
+        app_boundaries = detect_application_boundaries(root)
 
         files_by_lang: dict[str, list[Path]] = {}
         detected_languages: set[str] = set()
@@ -117,8 +124,28 @@ class LanguageRegistry:
         all_imports = []
         all_exports = []
         all_calls_made = []
+        production_calls_made = []
+        test_calls_made = []
+        example_calls_made = []
         all_feature_flags: list[FeatureFlagDefinition] = []
         all_feature_flag_consumers: set[str] = set()
+        imports_by_app: dict[str, list[str]] = {}
+
+        role_counts: dict[str, int] = {
+            "application_source": 0,
+            "example": 0,
+            "demo": 0,
+            "benchmark": 0,
+            "fixture": 0,
+            "test": 0,
+            "documentation": 0,
+            "api_contract": 0,
+            "configuration": 0,
+            "generated": 0,
+            "vendor": 0,
+            "build_output": 0,
+            "unknown": 0,
+        }
 
         file_count = 0
         scan_truncated = False
@@ -136,6 +163,13 @@ class LanguageRegistry:
                 scan_truncated = True
                 break
 
+            rel_posix = path.relative_to(root).as_posix()
+            scope_info = resolve_file_scope(rel_posix, root, app_boundaries)
+            role = scope_info["source_role"]
+            app_name = scope_info["app_name"]
+            scope = scope_info["scope"]
+            role_counts[role] = role_counts.get(role, 0) + 1
+
             lang = self.identify_language(path)
             detected_languages.add(lang)
             files_by_lang.setdefault(lang, []).append(path)
@@ -143,17 +177,78 @@ class LanguageRegistry:
             adapter = self.get_adapter(path.suffix)
             if adapter is not None:
                 analysis = adapter.analyze_file(path, root)
-                all_routes.extend(analysis.get("routes", []))
-                all_client_calls.extend(analysis.get("client_calls", []))
-                all_models.extend(analysis.get("models", []))
-                all_components.extend(analysis.get("components", []))
-                all_ui_actions.extend(analysis.get("ui_actions", []))
-                all_unfinished.extend(analysis.get("unfinished", []))
-                all_symbols.extend(analysis.get("symbols", []))
-                all_imports.extend(analysis.get("imports", []))
+
+                # Attach scope and boundary metadata to all extracted definitions
+                file_routes = analysis.get("routes", [])
+                for r in file_routes:
+                    r.source_role = role
+                    r.app_name = app_name
+                    r.scope = scope
+                all_routes.extend(file_routes)
+
+                file_calls = analysis.get("client_calls", [])
+                for c in file_calls:
+                    c.source_role = role
+                    c.app_name = app_name
+                    c.scope = scope
+                all_client_calls.extend(file_calls)
+
+                file_models = analysis.get("models", [])
+                for m in file_models:
+                    m.source_role = role
+                    m.app_name = app_name
+                    m.scope = scope
+                all_models.extend(file_models)
+
+                file_components = analysis.get("components", [])
+                for comp in file_components:
+                    comp.source_role = role
+                    comp.app_name = app_name
+                    comp.scope = scope
+                all_components.extend(file_components)
+
+                file_actions = analysis.get("ui_actions", [])
+                for a in file_actions:
+                    a.source_role = role
+                    a.app_name = app_name
+                    a.scope = scope
+                all_ui_actions.extend(file_actions)
+
+                file_unfinished = analysis.get("unfinished", [])
+                for u in file_unfinished:
+                    u.source_role = role
+                    u.app_name = app_name
+                    u.scope = scope
+                all_unfinished.extend(file_unfinished)
+
+                file_symbols = analysis.get("symbols", [])
+                for s in file_symbols:
+                    s.source_role = role
+                    s.app_name = app_name
+                    s.scope = scope
+                all_symbols.extend(file_symbols)
+
+                file_imports = analysis.get("imports", [])
+                all_imports.extend(file_imports)
+                imports_by_app.setdefault(app_name, []).extend(file_imports)
+
                 all_exports.extend(analysis.get("exports", []))
-                all_calls_made.extend(analysis.get("calls_made", []))
-                all_feature_flags.extend(analysis.get("feature_flags", []))
+
+                calls_in_file = analysis.get("calls_made", [])
+                all_calls_made.extend(calls_in_file)
+                if role == "application_source":
+                    production_calls_made.extend(calls_in_file)
+                elif role == "test":
+                    test_calls_made.extend(calls_in_file)
+                elif role in ("example", "demo", "benchmark"):
+                    example_calls_made.extend(calls_in_file)
+
+                file_flags = analysis.get("feature_flags", [])
+                for f in file_flags:
+                    f.source_role = role
+                    f.app_name = app_name
+                    f.scope = scope
+                all_feature_flags.extend(file_flags)
                 all_feature_flag_consumers.update(analysis.get("feature_flag_consumers", []))
 
         # Check manifests without cross-language contamination
@@ -191,6 +286,8 @@ class LanguageRegistry:
             "files_by_language": {lang: len(paths) for lang, paths in files_by_lang.items()},
             "frameworks": detected_frameworks,
             "capability_matrix": capability_matrix,
+            "application_boundaries": app_boundaries,
+            "source_role_inventory": role_counts,
             "file_count": file_count,
             "file_limit": file_limit,
             "scan_truncated": scan_truncated,
@@ -202,8 +299,12 @@ class LanguageRegistry:
             "unfinished": all_unfinished,
             "symbols": all_symbols,
             "imports": sorted(set(all_imports)),
+            "imports_by_app": imports_by_app,
             "exports": sorted(set(all_exports)),
             "calls_made": sorted(set(all_calls_made)),
+            "production_calls_made": sorted(set(production_calls_made)),
+            "test_calls_made": sorted(set(test_calls_made)),
+            "example_calls_made": sorted(set(example_calls_made)),
             "feature_flags": all_feature_flags,
             "feature_flag_consumers": sorted(all_feature_flag_consumers),
         }
