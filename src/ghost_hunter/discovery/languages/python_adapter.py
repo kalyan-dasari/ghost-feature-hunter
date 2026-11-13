@@ -14,6 +14,7 @@ from typing import Any
 from ghost_hunter.discovery.languages.base import BaseLanguageAdapter
 from ghost_hunter.discovery.languages.models import (
     ClientCall,
+    FeatureFlagDefinition,
     ModelDefinition,
     RouteDefinition,
     SymbolDefinition,
