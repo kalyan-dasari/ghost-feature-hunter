@@ -437,19 +437,6 @@ def audit_repository(project_root: Path) -> dict[str, Any]:
                 "why_false_positive": "Endpoint may be consumed by external webhooks, mobile apps, or public API clients.",
                 "recommended_action": "Confirm with feature owner before deprecating or removing.",
             })
-                "id": f"unused-{len(potentially_unused_endpoints) + 1}",
-                "category": "potentially_unused_endpoint",
-                "severity": "Low",
-                "confidence": "Low",
-                "finding_state": "Requires Owner Confirmation",
-                "endpoint": path,
-                "methods": route.methods,
-                "source": route.source,
-                "line": route.line,
-                "explanation": f"Endpoint '{path}' has no static callers in frontend, tests, or documentation.",
-                "why_false_positive": "Endpoint may be consumed by external webhooks, mobile apps, or public API clients.",
-                "recommended_action": "Confirm with feature owner before deprecating or removing.",
-            })
 
     # 4. Empty & Unfinished Implementations
     unfinished_items = scan_data.get("unfinished", [])
