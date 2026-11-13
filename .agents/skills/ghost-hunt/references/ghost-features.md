@@ -76,6 +76,13 @@ A healthy feature forms an unbroken chain from Layer 1 through Layer 8. A broken
 - **Chain Stage:** `Navigation -> UI Page`
 - **Impact:** Dead page consuming bundle size without being accessible to users.
 
+### Archetype I: Orphaned or Undefined Feature Flags
+- **Symptom:** A feature flag (`FEATURE_NEW_CHECKOUT = True`) is declared in settings or configuration but has zero conditional consumers; or code checks a flag (`if FEATURE_DARK_MODE:`) that has no static definition.
+- **Finding Category:** `ghost_feature_candidate`
+- **Chain Stage:** `Feature Flag -> Conditional Consumer`
+- **Finding State:** `Requires Owner Confirmation`
+- **Impact:** Dead flag configuration or unintended runtime branch behavior.
+
 ---
 
 ## 3. Ghost Feature Finding Schema
