@@ -68,3 +68,4 @@ When Ghost Hunt encounters languages without full AST adapter support (e.g., Go,
 1. **Inventory Files Honestly:** Report the exact file count, primary directories, and detected manifest files (`go.mod`, `Cargo.toml`, `pom.xml`, `composer.json`).
 2. **Never Claim Unsupported Analysis:** Clearly declare the status as `partial` or `inventory-only`.
 3. **Agent Native Tool Execution:** AI coding agents in interactive mode can use native grep, file reading, and test execution tools to investigate features in any language, following the same disciplined 11-step protocol.
+
