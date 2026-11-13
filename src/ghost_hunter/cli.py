@@ -225,17 +225,12 @@ def discover(
         context = detect_project_context(root)
         flask_result = discover_project(root)
 
-        # Primary multi-language discovery result
-        result = {
-            "schema_version": "2.0",
-            "project_name": context.get("project_name", "unknown"),
-            "languages": scan_data.get("detected_languages", []),
-            "frameworks": scan_data.get("frameworks", []),
-            "application_boundaries": scan_data.get("application_boundaries", []),
-            "source_role_inventory": scan_data.get("source_role_inventory", {}),
-            "capability_matrix": scan_data.get("capability_matrix", []),
-            "routes": [
-                {
+        # Merge routes ensuring flask routes are present for backwards compatibility
+        combined_routes = list(flask_result.get("routes", []))
+        known_route_paths = {r["path"] for r in combined_routes}
+        for r in scan_data.get("routes", []):
+            if r.path not in known_route_paths:
+                combined_routes.append({
                     "path": r.path,
                     "methods": r.methods,
                     "source": r.source,
@@ -243,16 +238,33 @@ def discover(
                     "framework": r.framework,
                     "app_name": r.app_name,
                     "source_role": r.source_role,
-                }
-                for r in scan_data.get("routes", [])
-            ],
-            "models": [
+                    "is_example": False,
+                })
+                known_route_paths.add(r.path)
+
+        # Primary multi-language discovery result with backwards compatibility
+        result = {
+            "schema_version": "2.0",
+            "project_path": str(root),
+            "project_name": context.get("project_name", "unknown"),
+            "context": context,
+            "analysis_mode": "static",
+            "runtime_verified": False,
+            "languages": scan_data.get("detected_languages", []),
+            "frameworks": [f["framework"] for f in scan_data.get("frameworks", [])],
+            "application_boundaries": scan_data.get("application_boundaries", []),
+            "source_role_inventory": scan_data.get("source_role_inventory", {}),
+            "capability_matrix": scan_data.get("capability_matrix", []),
+            "routes": combined_routes,
+            "models": flask_result.get("models", []) or [
                 {
+                    "class": m.name,
                     "name": m.name,
                     "source": m.source,
                     "line": m.line,
                     "framework": m.framework,
                     "app_name": m.app_name,
+                    "is_example": False,
                 }
                 for m in scan_data.get("models", [])
             ],
