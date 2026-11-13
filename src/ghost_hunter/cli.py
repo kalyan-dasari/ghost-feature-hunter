@@ -166,6 +166,44 @@ def audit_routes(
         typer.echo(f"  [UNCOVERED] {uncovered['endpoint']} ({uncovered['source']}:{uncovered['line']})")
 
 
+@app.command(name="audit-repo")
+def audit_repo(
+    project_root: Path = typer.Option(Path.cwd(), "--project-root", "-p", help="Project root to audit."),
+) -> None:
+    """Perform a comprehensive multi-language repository audit with ghost feature detection."""
+    root = project_root.resolve()
+    from ghost_hunter.discovery.audit import audit_repository
+
+    result = audit_repository(root)
+    typer.echo(f"Project: {result['project_context']['project_name']}")
+    typer.echo("Language / Framework Capabilities:")
+    for cap in result["capability_matrix"]:
+        typer.echo(f"  - {cap['language_framework']}: {cap['status']} ({cap['analysis_capability']})")
+
+    typer.echo(f"\nGhost Feature Candidates: {len(result['ghost_features'])}")
+    for gf in result["ghost_features"]:
+        typer.echo(f"  [{gf['chain_stage']}] {gf['explanation']} ({gf['source']}:{gf['line']})")
+
+    typer.echo(f"\nEmpty / Unfinished Candidates: {len(result['empty_or_unfinished'])}")
+    for item in result["empty_or_unfinished"]:
+        typer.echo(f"  [{item['item_type']}] {item['name']} ({item['source']}:{item['line']})")
+
+    typer.echo(f"\nMissing Route Candidates: {len(result['missing_route_candidates'])}")
+    for candidate in result["missing_route_candidates"]:
+        typer.echo(f"  [MISSING] {candidate['method']} {candidate['endpoint']} ({candidate['source']}:{candidate['line']})")
+
+    typer.echo(f"\nMethod Mismatches: {len(result['method_mismatches'])}")
+    for mm in result["method_mismatches"]:
+        typer.echo(f"  [MISMATCH] Client calls {mm['client_method']} {mm['endpoint']} (Allowed: {mm['allowed_methods']})")
+
+    typer.echo(f"\nPotentially Unused Endpoints: {len(result['potentially_unused_endpoints'])}")
+    for unused in result["potentially_unused_endpoints"]:
+        typer.echo(f"  [UNUSED] {unused['endpoint']} ({unused['source']}:{unused['line']})")
+
+    typer.echo(f"\nStructural Duplicate Code: {len(result['duplicate_logic'])} blocks ({result['code_waste_estimate']['duplicate_lines']} waste lines)")
+
+
+
 
 @app.command()
 def report(
