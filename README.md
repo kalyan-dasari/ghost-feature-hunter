@@ -93,9 +93,9 @@ You can also ask in natural language:
 
 ## 🌟 The Three Core Capabilities
 
-1. **Project Discovery & Scope Lock:** Understands project structure before selecting targets. Distinguishes monorepo workspaces and benchmark fixtures from primary application code.
+1. **Multi-Language Discovery & Scope Lock:** Understands project structure before selecting targets. Distinguishes monorepo workspaces and benchmark fixtures from primary application code. Declares transparent analysis capabilities for Python, JavaScript/TypeScript, and unsupported ecosystems.
 2. **Individual Feature Investigation:** Traces cross-boundary data flow, isolates stateful test scenarios to prevent contamination, and validates expectations against authoritative requirement sources.
-3. **Whole-Repository Static Audit:** Analyzes route connections across frontend and backend, flags missing route candidates, surfaces unreferenced endpoints with proper dynamic-loading caveats, and calculates conservative code waste estimates.
+3. **Ghost Feature Detection & Whole-Repository Audit:** Constructs a feature connection graph across 8 architectural layers to unmask disconnected features, missing routes, method mismatches, empty implementations, orphaned services, and structural code duplication.
 
 ---
 
@@ -106,8 +106,12 @@ Ghost Hunt clearly distinguishes between different classes of findings so develo
 | Finding Category | Meaning | Confidence | Required Action |
 |---|---|---|---|
 | **Confirmed Defect (`FAIL`)** | Real runtime check failed against an authoritative requirement. | High / Evidence-backed | Propose surgical fix diff with line references. |
+| **Ghost Feature Candidate** | Feature appears in one layer (UI, link, button, route) but has a missing, disconnected, or incomplete implementation path. | High / Medium | Complete the broken link in the feature chain or remove dead interface elements. |
+| **Empty / Unfinished Candidate** | Function, route handler, or button has only `pass`, `...`, `NotImplementedError`, or `onClick={() => {}}` (excluding abstract methods/interfaces). | High / Medium | Complete implementation or document intentional stub behavior. |
 | **Missing Route Candidate** | Frontend or client code calls an endpoint (`fetch`, `axios`) that has no matching backend route. | Medium / Static Candidate | Confirm whether route is handled externally or missing. |
-| **Potentially Unused Route** | Backend route defined but no references found in codebase. | Low / Heuristic Candidate | Verify against external webhooks, mobile clients, and dynamic dispatch before removal. |
+| **Method / Path Mismatch** | Client requests an endpoint with an HTTP method (e.g. `POST`) not accepted by the backend route (e.g. `GET`). | High / Static Candidate | Align allowed route methods or update client request. |
+| **Potentially Unused Route / Dep** | Backend route or package declared but no references found in codebase. | Low / Heuristic Candidate | Verify against external webhooks, mobile clients, and dynamic dispatch before removal (`Requires Owner Confirmation`). |
+| **Structural Duplicate Code** | Functions with different or identical names sharing identical normalized syntax bodies. | High / Measurable | Unify duplicate logic and eliminate redundant maintenance lines. |
 | **Testing Gap** | Critical business logic or mutation route has zero test coverage in the existing test suite. | High / Measurable | Author targeted regression tests. |
 | **Inferred Assumption** | Expected behavior deduced from code patterns or naming rather than explicit specs. | Unconfirmed Hypothesis | **Evaluates to UNKNOWN, never PASS or FAIL.** Must be confirmed by project owner. |
 
