@@ -25,6 +25,32 @@ from ghost_hunter.discovery.languages.python_adapter import normalize_route_path
 from ghost_hunter.discovery.project import is_example_or_fixture
 
 
+def _find_jsx_tag_end(content: str, start_index: int) -> int:
+    """Find the index of the closing '>' of an opening JSX tag, skipping '>' inside quotes or braces."""
+    in_quote: str | None = None
+    brace_depth = 0
+    i = start_index
+    length = len(content)
+    while i < length:
+        ch = content[i]
+        if in_quote is not None:
+            if ch == in_quote:
+                in_quote = None
+            elif ch == "\\":
+                i += 1
+        elif ch in ('"', "'", "`"):
+            in_quote = ch
+        elif ch == "{":
+            brace_depth += 1
+        elif ch == "}":
+            if brace_depth > 0:
+                brace_depth -= 1
+        elif ch == ">" and brace_depth == 0:
+            return i
+        i += 1
+    return -1
+
+
 class JavaScriptAdapter(BaseLanguageAdapter):
     """Static analysis for JavaScript and TypeScript codebases."""
 
@@ -342,14 +368,22 @@ class JavaScriptAdapter(BaseLanguageAdapter):
         # 7. UI Actions, Buttons & Form Connections (React / JSX / HTML)
         # Parse multiline forms to identify working forms and unhandled forms
         working_form_spans: list[tuple[int, int]] = []
-        form_pattern = re.compile(r"""<form\b([\s\S]*?)>([\s\S]*?)</form>""", re.IGNORECASE)
-        for form_match in form_pattern.finditer(content):
-            form_attrs = form_match.group(1)
-            form_body = form_match.group(2)
-            start_pos = form_match.start()
-            end_pos = form_match.end()
-            line_num = content.count("\n", 0, start_pos) + 1
+        form_open_pattern = re.compile(r"""<form\b""", re.IGNORECASE)
+        for open_match in form_open_pattern.finditer(content):
+            start_pos = open_match.start()
+            tag_end = _find_jsx_tag_end(content, open_match.end())
+            if tag_end == -1:
+                continue
+            form_attrs = content[open_match.end() : tag_end]
+            close_match = re.search(r"</form>", content[tag_end:], re.IGNORECASE)
+            if close_match:
+                form_body = content[tag_end + 1 : tag_end + close_match.start()]
+                end_pos = tag_end + close_match.end()
+            else:
+                form_body = ""
+                end_pos = tag_end + 1
 
+            line_num = content.count("\n", 0, start_pos) + 1
             has_action = bool(re.search(r"""\baction\s*=""", form_attrs, re.IGNORECASE))
             has_onsubmit = bool(re.search(r"""\bon(?:S|s)ubmit\s*=""", form_attrs, re.IGNORECASE))
 
@@ -370,13 +404,25 @@ class JavaScriptAdapter(BaseLanguageAdapter):
                     ))
 
         # Parse multiline buttons
-        btn_pattern = re.compile(r"""<(?:button|Button)\b([\s\S]*?)>([\s\S]*?)</(?:button|Button)>""", re.IGNORECASE)
-        for btn_match in btn_pattern.finditer(content):
-            btn_attrs = btn_match.group(1)
-            btn_body = btn_match.group(2)
-            start_pos = btn_match.start()
-            line_num = content.count("\n", 0, start_pos) + 1
+        btn_open_pattern = re.compile(r"""<(button|Button)\b""", re.IGNORECASE)
+        for open_match in btn_open_pattern.finditer(content):
+            start_pos = open_match.start()
+            tag_name = open_match.group(1)
+            tag_end = _find_jsx_tag_end(content, open_match.end())
+            if tag_end == -1:
+                continue
 
+            btn_attrs = content[open_match.end() : tag_end]
+            close_pattern = rf"""</{tag_name}>"""
+            close_match = re.search(close_pattern, content[tag_end:], re.IGNORECASE)
+            if close_match:
+                btn_body = content[tag_end + 1 : tag_end + close_match.start()]
+                btn_end = tag_end + close_match.end()
+            else:
+                btn_body = ""
+                btn_end = tag_end + 1
+
+            line_num = content.count("\n", 0, start_pos) + 1
             label = re.sub(r"<[^>]+>", "", btn_body).strip() or "Button"
             is_submit_type = bool(re.search(r"""\btype\s*=\s*['"]submit['"]""", btn_attrs, re.IGNORECASE))
             in_working_form = any(f_start <= start_pos <= f_end for f_start, f_end in working_form_spans)
@@ -384,7 +430,7 @@ class JavaScriptAdapter(BaseLanguageAdapter):
 
             has_click_attr = "onclick" in btn_attrs.lower()
             empty_click = bool(re.search(
-                r"""onClick\s*=\s*\{(?:\(\s*\)\s*=>\s*\{|\s*function\s*\(\s*\)\s*\{)\s*\}""",
+                r"""onClick\s*=\s*\{(?:\(\s*.*?\s*\)\s*=>\s*\{|\s*function\s*\([^)]*\)\s*\{)\s*(?://[^\n]*\n|\s*)*\}\s*\}""",
                 btn_attrs
             ))
 
@@ -395,7 +441,7 @@ class JavaScriptAdapter(BaseLanguageAdapter):
                     target="empty_inline_handler",
                     source=rel_path,
                     line=line_num,
-                    raw=content[start_pos:min(start_pos + 150, btn_match.end())].strip(),
+                    raw=content[start_pos:min(start_pos + 150, btn_end)].strip(),
                     is_empty_handler=True,
                     has_handler=True,
                 ))
@@ -404,7 +450,7 @@ class JavaScriptAdapter(BaseLanguageAdapter):
                     name=f"Button '{label}' empty onClick",
                     source=rel_path,
                     line=line_num,
-                    evidence=content[start_pos:min(start_pos + 150, btn_match.end())].strip(),
+                    evidence=content[start_pos:min(start_pos + 150, btn_end)].strip(),
                     explanation=f"UI button '{label}' has an empty or no-op inline handler (onClick={{() => {{}}}}).",
                     confidence="High",
                     is_abstract_or_protocol=False,
@@ -417,7 +463,7 @@ class JavaScriptAdapter(BaseLanguageAdapter):
                     target="handler",
                     source=rel_path,
                     line=line_num,
-                    raw=content[start_pos:min(start_pos + 150, btn_match.end())].strip(),
+                    raw=content[start_pos:min(start_pos + 150, btn_end)].strip(),
                     is_empty_handler=False,
                     has_handler=True,
                 ))
@@ -428,7 +474,7 @@ class JavaScriptAdapter(BaseLanguageAdapter):
                     target="form_submit",
                     source=rel_path,
                     line=line_num,
-                    raw=content[start_pos:min(start_pos + 150, btn_match.end())].strip(),
+                    raw=content[start_pos:min(start_pos + 150, btn_end)].strip(),
                     is_empty_handler=False,
                     has_handler=True,
                 ))
@@ -439,7 +485,7 @@ class JavaScriptAdapter(BaseLanguageAdapter):
                     target="none",
                     source=rel_path,
                     line=line_num,
-                    raw=content[start_pos:min(start_pos + 150, btn_match.end())].strip(),
+                    raw=content[start_pos:min(start_pos + 150, btn_end)].strip(),
                     is_empty_handler=False,
                     has_handler=False,
                 ))
