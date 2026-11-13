@@ -15,10 +15,10 @@ Every project discovery and repository audit report must begin with an explicit 
 |---|---|---|---|
 | **Python / Flask** | Yes | Full AST route, model, caller, and unfinished detection | Dynamic decorators and runtime metaclass routing require manual verification. |
 | **Python / FastAPI** | Yes | Full AST route, Pydantic model, and unfinished detection | Dynamic dependency injection and runtime middleware require execution. |
-| **Python / Django** | Yes | Route regex, model, and view structure analysis | Dynamic URL reversing and template-rendered URLs are approximated. |
+| **Python / Django** | Yes | Partial AST urlpatterns extraction (`path`, `re_path`, `include`), view references, and models | Dynamic class-based view dispatching, runtime `reverse()` URL resolution, and plugin-based routing require manual inspection. |
 | **JS/TS / Express** | Yes | Route extraction, middleware, client calls, and symbols | Dynamic router middleware chains and runtime mount points require inspection. |
 | **JS/TS / Next.js** | Yes | App Router / Pages Router routes, pages, and components | Dynamic catch-all routes (`[...slug]`) are normalized. |
-| **JS/TS / React** | Yes | Component inventory, UI buttons, handlers, form inputs | Higher-order components and complex context state updates require execution. |
+| **JS/TS / React** | Yes | Multiline component tags, UI buttons, handlers, form inputs | Higher-order components and complex context state updates require execution. |
 | **Other (Go, Rust, Java, etc.)**| Yes | File inventory and package manifest inspection only | Deep AST route and caller analysis are not currently implemented. |
 
 ---
@@ -43,12 +43,16 @@ Language adapters declare the exact capabilities they implement:
 
 ## 3. Supported Ecosystems in the Engine
 
-### Python (Full AST Support)
-- **Supported Frameworks:** Flask, FastAPI, Django.
+### Python (Full AST Support & Partial Django)
+- **Supported Frameworks:** Flask (Full), FastAPI (Full), Django (Partial).
 - **AST Parsing:** Uses Python's standard library `ast` module (safe; application code is never imported or executed).
+- **Django Extraction:** Static AST extraction of `urlpatterns` supporting `path()`, `re_path()`, `include()`, view functions, and view classes.
 - **Route Normalization:** Standardizes `<int:id>`, `<id>`, and `{id}` to `{id}` for cross-boundary matching.
 - **Model Discovery:** Detects SQLAlchemy declarative models, Django models, and Pydantic schemas.
 - **Abstract Method Handling:** Checks for `@abstractmethod`, `abc.ABC`, and `typing.Protocol` to prevent false defect reports for intentional interface stubs.
+- **Default Return Safeguard:** Legitimate default returns (`return None`, `return False`, `return []`, `return {}`, `return ""`) are recognized as valid implementations and are never flagged as unfinished stubs.
+- **Feature Flag Detection:** Tracks `FEATURE_*`, `ENABLE_*`, and `FLAG_*` definitions and consumer conditionals.
+- **Structural Duplication Analysis:** AST-based structural duplicate detection is Python-only and preserves external function calls, operators, and constants.
 
 ### JavaScript & TypeScript (Structural Parser Support)
 - **Supported Frameworks:** Express, Next.js (App & Pages Routers), React, Node.js.
@@ -57,7 +61,12 @@ Language adapters declare the exact capabilities they implement:
   - App Router: Maps `app/**/route.{ts,js}` and HTTP method exports (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`).
   - Pages Router: Maps `pages/api/**/*.ts` default exports.
   - UI Pages: Maps `app/**/page.tsx` and `pages/**/*.tsx` as navigation destinations.
-- **React UI Connections:** Inspects `<button onClick={...}>`, `<Link href="...">`, and `<form>`.
+- **React UI Connections & Multiline Scanning:**
+  - Multiline tag scanning for `<button>` and `<form>`.
+  - Buttons with named handlers (`onClick={handleClick}` or `onClick={(e) => ...}`) are recognized as valid handlers.
+  - Buttons with `type="submit"` or enclosed in working `<form onSubmit={...}>` / `<form action="...">` are recognized as submit triggers and are never flagged as unhandled.
+  - Forms are only flagged when containing input controls without any submission handler.
+- **Feature Flag Detection:** Tracks `FEATURE_*`, `ENABLE_*`, and `FLAG_*` constants and conditional usages.
 
 ---
 

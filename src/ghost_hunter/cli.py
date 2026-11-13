@@ -123,16 +123,67 @@ def audit(
         raise typer.Exit(code=1)
 
 
+def render_audit_markdown(audit_data: dict[str, Any]) -> str:
+    """Render a human-readable Markdown report from repository audit results."""
+    lines = [
+        f"# Ghost Hunt Repository Audit: {audit_data.get('project_context', {}).get('project_name', 'Project')}",
+        "",
+        "## Summary",
+        f"- **Detected Languages**: {', '.join(audit_data.get('detected_languages', []))}",
+        f"- **Files Scanned**: {audit_data.get('file_count', 0)} (Limit: {audit_data.get('file_limit', 15000)}, Truncated: {audit_data.get('scan_truncated', False)})",
+        f"- **Total Routes**: {audit_data.get('total_routes', 0)}",
+        f"- **Total Client Calls**: {audit_data.get('total_client_calls', 0)}",
+        f"- **Ghost Feature Candidates**: {len(audit_data.get('ghost_features', []))}",
+        f"- **Empty / Unfinished Candidates**: {len(audit_data.get('empty_or_unfinished', []))}",
+        f"- **Missing Route Candidates**: {len(audit_data.get('missing_route_candidates', []))}",
+        f"- **Method Mismatches**: {len(audit_data.get('method_mismatches', []))}",
+        f"- **Uncovered Routes**: {len(audit_data.get('uncovered_routes', []))}",
+        f"- **Structural Duplicate Blocks**: {len(audit_data.get('duplicate_logic', []))} ({audit_data.get('code_waste_estimate', {}).get('duplicate_lines', 0)} lines)",
+        "",
+        "## Capability Matrix",
+        "| Language / Framework | Status | Capability | Limitations |",
+        "| --- | --- | --- | --- |",
+    ]
+    for cap in audit_data.get("capability_matrix", []):
+        lines.append(f"| {cap['language_framework']} | {cap['status']} | {cap['analysis_capability']} | {cap['limitations']} |")
+
+    lines.append("")
+    lines.append("## Ghost Feature Candidates")
+    gf_list = audit_data.get("ghost_features", [])
+    if gf_list:
+        for gf in gf_list:
+            lines.append(f"### {gf.get('id', 'Ghost')}: {gf.get('chain_stage', '')}")
+            lines.append(f"- **Explanation**: {gf.get('explanation', '')}")
+            lines.append(f"- **Location**: `{gf.get('source', '')}:{gf.get('line', '')}`")
+            lines.append(f"- **Confidence**: {gf.get('confidence', '')}")
+            lines.append(f"- **Impact**: {gf.get('potential_impact', '')}")
+            lines.append(f"- **Recommended Action**: {gf.get('recommended_action', '')}")
+            lines.append("")
+    else:
+        lines.append("No ghost features detected.")
+        lines.append("")
+
+    return "\n".join(lines) + "\n"
+
+
 @app.command()
 def discover(
     project_root: Path = typer.Option(Path.cwd(), "--project-root", "-p", help="Project root to inspect."),
     force: bool = typer.Option(False, "--force", help="Replace existing discovery output."),
 ) -> None:
-    """Statically discover Flask routes, common models, tests, and frontend files."""
+    """Statically discover project routes, models, tests, frontend files, and multi-language capabilities."""
     root = project_root.resolve()
     try:
         config = load_config(root)
         result = discover_project(root)
+        from ghost_hunter.discovery.languages.registry import LanguageRegistry
+        registry = LanguageRegistry()
+        scan_data = registry.scan_repository(root)
+        result["multi_language"] = {
+            "detected_languages": scan_data.get("detected_languages", []),
+            "frameworks": [f["framework"] for f in scan_data.get("frameworks", [])],
+            "capability_matrix": scan_data.get("capability_matrix", []),
+        }
         json_path, markdown_path = write_discovery(result, _safe_report_dir(root, config.report_dir), force=force)
     except (ValueError, OSError, FileExistsError) as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -141,6 +192,8 @@ def discover(
         f"models: {len(result['models'])}; tests: {len(result['tests'])}; "
         f"frontend files: {len(result['frontend_files'])}"
     )
+    if scan_data.get("detected_languages"):
+        typer.echo(f"Languages: {', '.join(scan_data['detected_languages'])}")
     typer.echo(f"JSON: {json_path}\nMarkdown: {markdown_path}")
 
 
@@ -169,12 +222,43 @@ def audit_routes(
 @app.command(name="audit-repo")
 def audit_repo(
     project_root: Path = typer.Option(Path.cwd(), "--project-root", "-p", help="Project root to audit."),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Report destination file (.json or .md)."),
+    json_output: bool = typer.Option(False, "--json", help="Output JSON format instead of human-readable text."),
+    force: bool = typer.Option(False, "--force", help="Replace existing report file at destination."),
+    allow_external_output: bool = typer.Option(
+        False, "--allow-external-output", help="Permit writing report outside the project root."
+    ),
 ) -> None:
     """Perform a comprehensive multi-language repository audit with ghost feature detection."""
     root = project_root.resolve()
     from ghost_hunter.discovery.audit import audit_repository
 
     result = audit_repository(root)
+
+    if output is not None:
+        destination = output if output.is_absolute() else (root / output)
+        resolved_dest = destination.resolve()
+        is_contained = resolved_dest == root or root in resolved_dest.parents
+        if not is_contained and not allow_external_output:
+            raise typer.BadParameter(
+                f"Refusing to write report outside project root ({root}) to {resolved_dest}. "
+                "Pass --allow-external-output to permit writing outside the project root."
+            )
+        if destination.exists() and not force:
+            raise typer.BadParameter(f"Refusing to overwrite existing {destination}; pass --force to replace it")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+
+        if destination.suffix.lower() == ".json" or json_output:
+            destination.write_text(json.dumps(result, indent=2, default=str) + "\n", encoding="utf-8")
+        else:
+            destination.write_text(render_audit_markdown(result), encoding="utf-8")
+        typer.echo(f"Audit report written to: {destination}")
+        return
+
+    if json_output:
+        typer.echo(json.dumps(result, indent=2, default=str))
+        return
+
     typer.echo(f"Project: {result['project_context']['project_name']}")
     typer.echo("Language / Framework Capabilities:")
     for cap in result["capability_matrix"]:

@@ -331,21 +331,28 @@ def audit_repository(project_root: Path) -> dict[str, Any]:
     potentially_unused_endpoints = []
     uncovered_routes = []
 
-    # Check test files
-    test_contents = ""
+    # Check test files with assertion and invocation awareness
+    test_files_data: list[tuple[str, str]] = []
     for test_path in root.rglob("*"):
+        if any(part in IGNORED_DIRECTORIES for part in test_path.parts):
+            continue
         if test_path.is_file() and ("test" in test_path.name.lower() or "test" in test_path.parts):
             try:
-                test_contents += test_path.read_text(encoding="utf-8", errors="ignore") + "\n"
+                test_files_data.append((test_path.as_posix(), test_path.read_text(encoding="utf-8", errors="ignore")))
             except OSError:
                 pass
 
+    # Recursively scan all markdown and restructured text documentation
     doc_text = ""
-    for doc in root.glob("*.md"):
-        try:
-            doc_text += doc.read_text(encoding="utf-8", errors="ignore") + "\n"
-        except OSError:
-            pass
+    for ext in ("*.md", "*.rst"):
+        for doc in root.rglob(ext):
+            if any(part in IGNORED_DIRECTORIES for part in doc.parts):
+                continue
+            if doc.is_file():
+                try:
+                    doc_text += doc.read_text(encoding="utf-8", errors="ignore") + "\n"
+                except OSError:
+                    pass
 
     registered_paths = {r.path for r in routes}
 
@@ -393,25 +400,43 @@ def audit_repository(project_root: Path) -> dict[str, Any]:
         path = route.path
         func = route.function
         frontend_refs = [c for c in client_calls if match_route(c.path, path)]
-        in_tests = path in test_contents or func in test_contents
+        cov_status = _evaluate_route_test_coverage(route, test_files_data)
         in_docs = path in doc_text
 
-        if not in_tests:
+        if cov_status != "test_verified":
             uncovered_routes.append({
                 "id": f"uncovered-{len(uncovered_routes) + 1}",
                 "category": "testing_gap",
+                "coverage_status": cov_status,
                 "severity": "Medium",
                 "confidence": "High",
                 "endpoint": path,
                 "methods": route.methods,
                 "source": route.source,
                 "line": route.line,
-                "explanation": f"Route '{path}' ({func}) has no identified assertions in the test suite.",
+                "explanation": (
+                    f"Route '{path}' ({func}) is mentioned in test files but lacks verified test execution and assertions."
+                    if cov_status == "test_reference_candidate"
+                    else f"Route '{path}' ({func}) has no identified assertions in the test suite."
+                ),
                 "recommended_action": "Add an integration or unit test verifying this route.",
             })
 
-        if not frontend_refs and not in_tests and not in_docs:
+        if not frontend_refs and cov_status != "test_verified" and not in_docs:
             potentially_unused_endpoints.append({
+                "id": f"unused-{len(potentially_unused_endpoints) + 1}",
+                "category": "potentially_unused_endpoint",
+                "severity": "Low",
+                "confidence": "Low",
+                "finding_state": "Requires Owner Confirmation",
+                "endpoint": path,
+                "methods": route.methods,
+                "source": route.source,
+                "line": route.line,
+                "explanation": f"Endpoint '{path}' has no static callers in frontend, tests, or documentation.",
+                "why_false_positive": "Endpoint may be consumed by external webhooks, mobile apps, or public API clients.",
+                "recommended_action": "Confirm with feature owner before deprecating or removing.",
+            })
                 "id": f"unused-{len(potentially_unused_endpoints) + 1}",
                 "category": "potentially_unused_endpoint",
                 "severity": "Low",
@@ -466,6 +491,9 @@ def audit_repository(project_root: Path) -> dict[str, Any]:
         "capability_matrix": scan_data.get("capability_matrix", []),
         "detected_languages": scan_data.get("detected_languages", []),
         "frameworks": scan_data.get("frameworks", []),
+        "file_count": scan_data.get("file_count", 0),
+        "file_limit": scan_data.get("file_limit", 15000),
+        "scan_truncated": scan_data.get("scan_truncated", False),
         "total_routes": len(routes),
         "total_client_calls": len(client_calls),
         "total_components": len(scan_data.get("components", [])),
