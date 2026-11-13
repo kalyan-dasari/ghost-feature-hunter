@@ -261,6 +261,9 @@ ghost-hunter init --project-root .
 # Advisory static discovery
 ghost-hunter discover --project-root .
 
+# Comprehensive multi-language repository & ghost feature audit
+ghost-hunter audit-repo --project-root .
+
 # Static route connection and hygiene audit
 ghost-hunter audit-routes --project-root .
 
