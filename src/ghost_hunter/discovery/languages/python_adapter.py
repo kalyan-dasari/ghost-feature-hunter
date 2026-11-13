@@ -58,6 +58,14 @@ class PythonAdapter(BaseLanguageAdapter):
 
     def get_capabilities(self) -> dict[str, bool]:
         return {
+            "route_extraction": True,
+            "symbol_analysis": True,
+            "ui_analysis": False,  # Python views generally do not contain JSX/TSX
+            "reference_analysis": True,
+            "duplicate_detection": True,  # Structural AST duplicate detection is Python-only
+            "unfinished_code_detection": True,
+            "dependency_analysis": True,
+            # Backwards compatibility flags
             "file_identification": True,
             "framework_identification": True,
             "import_export_discovery": True,
@@ -65,7 +73,7 @@ class PythonAdapter(BaseLanguageAdapter):
             "local_reference_call_analysis": True,
             "backend_route_extraction": True,
             "frontend_api_call_extraction": True,
-            "ui_navigation_connections": False,  # Python views generally do not contain JSX/TSX
+            "ui_navigation_connections": False,
             "test_discovery": True,
             "empty_unfinished_detection": True,
             "dependency_package_analysis": True,
@@ -76,6 +84,7 @@ class PythonAdapter(BaseLanguageAdapter):
             "Static AST parsing only; dynamic decorators and runtime metaclass routing require execution.",
             "Dynamic string-built URLs and runtime URL reversing (e.g. reverse('view-name')) are approximated.",
             "Reflection and plugin-based route registration cannot be verified statically without execution.",
+            "Django class-based view dispatching and dynamic URL reversing are partially analyzed.",
         ]
 
     def detect_frameworks(self, files: list[Path], root: Path) -> list[dict[str, Any]]:
@@ -90,17 +99,26 @@ class PythonAdapter(BaseLanguageAdapter):
             if "fastapi" in content and ("from fastapi import" in content or "import fastapi" in content):
                 signals["FastAPI"] = "supported"
             if "django" in content and ("from django" in content or "import django" in content):
-                signals["Django"] = "supported"
+                signals["Django"] = "partial"
 
         results = []
         for name, status in sorted(signals.items()):
-            results.append({
-                "language": "Python",
-                "framework": name,
-                "status": status,
-                "analysis_capability": "Full AST route, model, symbol, and unfinished implementation analysis",
-                "limitations": "Dynamic route decorators and runtime meta-programming require manual inspection.",
-            })
+            if name == "Django":
+                results.append({
+                    "language": "Python",
+                    "framework": "Django",
+                    "status": "partial",
+                    "analysis_capability": "AST-based urlpatterns extraction for path(), re_path(), include(), and view references.",
+                    "limitations": "Dynamic class-based view dispatching, runtime reverse() URL resolution, and plugin-based routing require manual inspection.",
+                })
+            else:
+                results.append({
+                    "language": "Python",
+                    "framework": name,
+                    "status": status,
+                    "analysis_capability": "Full AST route, model, symbol, and unfinished implementation analysis",
+                    "limitations": "Dynamic route decorators and runtime meta-programming require manual inspection.",
+                })
         if not results:
             results.append({
                 "language": "Python",
@@ -112,7 +130,11 @@ class PythonAdapter(BaseLanguageAdapter):
         return results
 
     def _is_empty_or_placeholder_body(self, body: list[ast.stmt]) -> tuple[bool, str]:
-        """Detect if function body is empty, pass, ellipsis, NotImplementedError, or placeholder return."""
+        """Detect if function body is empty, pass, ellipsis, or NotImplementedError.
+
+        Legitimate default returns (return None, return False, return [], return {}, return "")
+        are valid implementations and must NOT be flagged as unfinished stubs.
+        """
         stmts = [s for s in body if not (isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant) and isinstance(s.value.value, str))]
         if not stmts:
             return True, "empty_body"
@@ -124,17 +146,10 @@ class PythonAdapter(BaseLanguageAdapter):
                 return True, "ellipsis"
             if isinstance(stmt, ast.Raise):
                 exc = stmt.exc
-                if isinstance(exc, ast.Name) and exc.id == "NotImplementedError":
+                if isinstance(exc, ast.Name) and exc.id in ("NotImplementedError", "NotImplemented"):
                     return True, "not_implemented_error"
-                if isinstance(exc, ast.Call) and isinstance(exc.func, ast.Name) and exc.func.id == "NotImplementedError":
+                if isinstance(exc, ast.Call) and isinstance(exc.func, ast.Name) and exc.func.id in ("NotImplementedError", "NotImplemented"):
                     return True, "not_implemented_error"
-            if isinstance(stmt, ast.Return):
-                if stmt.value is None:
-                    return True, "return_none"
-                if isinstance(stmt.value, ast.Constant) and stmt.value.value in (None, "", False):
-                    return True, "placeholder_return"
-                if isinstance(stmt.value, (ast.Dict, ast.List)) and not getattr(stmt.value, "keys", getattr(stmt.value, "elts", [])):
-                    return True, "placeholder_return"
         return False, ""
 
     def _is_abstract(self, node: ast.FunctionDef | ast.AsyncFunctionDef, parent_class: ast.ClassDef | None) -> bool:
