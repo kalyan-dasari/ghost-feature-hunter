@@ -1,29 +1,32 @@
-"""Repository-wide static connection analysis, route audit, and code health checks.
+"""Repository-wide static connection analysis, route audit, and code hygiene checks.
 
 Performs conservative, evidence-backed inspection of routes, frontend callers,
-and test coverage gaps without executing project code.
+ghost features, empty implementations, dependencies, and structural duplicates.
 """
 
 from __future__ import annotations
 
 import ast
+import json
 import re
 from pathlib import Path
 from typing import Any
 
-from ghost_hunter.discovery.flask import FRONTEND_SUFFIXES, IGNORED_DIRS, discover_project
-from ghost_hunter.discovery.project import is_example_or_fixture
+from ghost_hunter.discovery.ghost_features import detect_ghost_features, match_route
+from ghost_hunter.discovery.languages.models import ClientCall, RouteDefinition
+from ghost_hunter.discovery.languages.python_adapter import normalize_route_path
+from ghost_hunter.discovery.languages.registry import LanguageRegistry
+from ghost_hunter.discovery.project import IGNORED_DIRECTORIES, detect_project_context, is_example_or_fixture
 
 
 def extract_client_api_calls(file_path: Path) -> list[dict[str, Any]]:
-    """Statically search for API paths in frontend/client files."""
+    """Statically search for API paths in frontend/client files (backwards compatible)."""
     calls: list[dict[str, Any]] = []
     try:
         content = file_path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return calls
 
-    # Match fetch('/api/...'), axios.get('/api/...'), action="/api/..."
     patterns = [
         re.compile(r"""(?:fetch|axios(?:\.[a-z]+)?|\$\.ajax)\s*\(\s*['"]([/a-zA-Z0-9_.-]+)['"]"""),
         re.compile(r"""action\s*=\s*['"]([/a-zA-Z0-9_.-]+)['"]"""),
@@ -45,130 +48,46 @@ def extract_client_api_calls(file_path: Path) -> list[dict[str, Any]]:
     return calls
 
 
-def audit_repository_routes(project_root: Path) -> dict[str, Any]:
-    """Audit route connections between backend handlers, frontend callers, and tests."""
-    root = project_root.resolve()
-    discovery = discover_project(root)
+def _normalize_ast_body(body: list[ast.stmt]) -> str:
+    """Normalize Python AST statements for structural duplicate comparison.
 
-    backend_routes = discovery.get("routes", [])
-    registered_paths = {r["path"] for r in backend_routes}
-    registered_functions = {r["function"] for r in backend_routes}
+    Strips docstrings and normalizes variable/constant names to compare logic structure.
+    """
+    stmts = [s for s in body if not (isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant) and isinstance(s.value.value, str))]
+    if not stmts:
+        return ""
 
-    # Gather frontend calls
-    client_calls: list[dict[str, Any]] = []
-    for rel_path in discovery.get("frontend_files", []):
-        full_path = root / rel_path
-        if full_path.is_file():
-            client_calls.extend(extract_client_api_calls(full_path))
+    class StructuralNormalizer(ast.NodeTransformer):
+        def visit_Name(self, node: ast.Name) -> ast.Name:
+            return ast.copy_location(ast.Name(id="_VAR_", ctx=node.ctx), node)
 
-    # Read test contents to check route coverage
-    test_contents: dict[str, str] = {}
-    for test_rel in discovery.get("tests", []):
-        test_path = root / test_rel
+        def visit_arg(self, node: ast.arg) -> ast.arg:
+            return ast.copy_location(ast.arg(arg="_ARG_", annotation=None), node)
+
+    normalized_stmts = []
+    normalizer = StructuralNormalizer()
+    for stmt in stmts:
         try:
-            test_contents[test_rel] = test_path.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            pass
+            cloned = ast.parse(ast.unparse(stmt)).body[0]
+            transformed = normalizer.visit(cloned)
+            normalized_stmts.append(ast.unparse(transformed))
+        except Exception:
+            try:
+                normalized_stmts.append(ast.dump(stmt))
+            except Exception:
+                pass
 
-    # Read doc contents
-    doc_text = ""
-    for doc_file in root.glob("*.md"):
-        try:
-            doc_text += doc_file.read_text(encoding="utf-8", errors="ignore") + "\n"
-        except OSError:
-            pass
-
-    missing_route_candidates: list[dict[str, Any]] = []
-    for call in client_calls:
-        endpoint = call["path"]
-        # Exact match or prefix match for parameterized routes
-        matched = any(
-            reg == endpoint or (":" in reg or "<" in reg and endpoint.startswith(reg.split("<")[0].split(":")[0]))
-            for reg in registered_paths
-        )
-        if not matched and endpoint.startswith("/api"):
-            missing_route_candidates.append({
-                "id": f"missing-route-{len(missing_route_candidates) + 1}",
-                "category": "missing_route",
-                "severity": "High",
-                "confidence": "Medium",
-                "evidence": call["raw"],
-                "source": call["source"],
-                "line": call["line"],
-                "endpoint": endpoint,
-                "explanation": f"Frontend client calls '{endpoint}', but no matching backend route handler was registered.",
-                "potential_impact": "Client requests will likely receive HTTP 404.",
-                "why_false_positive": "Endpoint may be served by an external microservice, reverse proxy, or dynamic route loader.",
-                "recommended_action": "Verify if the route is implemented in another service or implement the missing endpoint.",
-            })
-
-    potentially_unused_endpoints: list[dict[str, Any]] = []
-    uncovered_routes: list[dict[str, Any]] = []
-
-    for route in backend_routes:
-        path = route["path"]
-        func = route["function"]
-
-        # Check references in frontend
-        frontend_refs = [c for c in client_calls if c["path"] == path]
-
-        # Check references in tests
-        test_refs = [
-            test_rel
-            for test_rel, content in test_contents.items()
-            if path in content or func in content
-        ]
-
-        # Check references in docs
-        in_docs = path in doc_text
-
-        if not test_refs:
-            uncovered_routes.append({
-                "id": f"uncovered-route-{len(uncovered_routes) + 1}",
-                "category": "uncovered_route",
-                "severity": "Medium",
-                "confidence": "High",
-                "endpoint": path,
-                "methods": route["methods"],
-                "source": route["source"],
-                "line": route["line"],
-                "explanation": f"Route '{path}' ({func}) has no identified references in existing test suites.",
-                "recommended_action": "Add an integration or unit test asserting the route's behavior.",
-            })
-
-        if not frontend_refs and not test_refs and not in_docs:
-            potentially_unused_endpoints.append({
-                "id": f"unused-endpoint-{len(potentially_unused_endpoints) + 1}",
-                "category": "potentially_unused_endpoint",
-                "severity": "Low",
-                "confidence": "Low",
-                "endpoint": path,
-                "methods": route["methods"],
-                "source": route["source"],
-                "line": route["line"],
-                "explanation": f"Endpoint '{path}' has no static callers in frontend, tests, or documentation.",
-                "why_false_positive": "Endpoint may be consumed by external webhook, mobile client, or third-party integration.",
-                "recommended_action": "Confirm with feature owner before deprecating or removing.",
-            })
-
-    return {
-        "schema_version": "1.0",
-        "total_routes_inspected": len(backend_routes),
-        "total_frontend_calls_inspected": len(client_calls),
-        "missing_route_candidates": missing_route_candidates,
-        "potentially_unused_endpoints": potentially_unused_endpoints,
-        "uncovered_routes": uncovered_routes,
-        "limitations": [
-            "Static regex and AST parsing cannot inspect runtime-constructed URLs or external API consumers.",
-            "Potentially unused endpoints are candidates only and require owner confirmation before removal.",
-            "Missing tests indicate testing gaps, not necessarily broken functionality.",
-        ],
-    }
+    return "\n".join(normalized_stmts)
 
 
 def estimate_duplicate_blocks(python_files: list[Path]) -> list[dict[str, Any]]:
-    """Conservative duplicate function detection without double-counting lines."""
-    functions_by_name: dict[str, list[dict[str, Any]]] = {}
+    """Structural duplicate detection comparing normalized implementations, not just names.
+
+    Avoids reporting different implementations with matching names, detects identical
+    implementations with different names, and strictly prevents double-counting lines.
+    """
+    # Map: structural_hash -> list of occurrences
+    occurrences_by_hash: dict[str, list[dict[str, Any]]] = {}
 
     for path in python_files:
         try:
@@ -181,34 +100,364 @@ def estimate_duplicate_blocks(python_files: list[Path]) -> list[dict[str, Any]]:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 if node.name.startswith("_"):
                     continue
-                # Calculate line span
                 end_lineno = getattr(node, "end_lineno", node.lineno)
                 line_count = end_lineno - node.lineno + 1
-                if line_count >= 5:  # meaningful functions only
-                    functions_by_name.setdefault(node.name, []).append({
-                        "file": path.as_posix(),
-                        "line": node.lineno,
-                        "line_count": line_count,
-                    })
+                if line_count < 4:  # Meaningful blocks only
+                    continue
+
+                body_sig = _normalize_ast_body(node.body)
+                if not body_sig or len(body_sig) < 20:
+                    continue
+
+                occurrences_by_hash.setdefault(body_sig, []).append({
+                    "name": node.name,
+                    "file": path.as_posix(),
+                    "line": node.lineno,
+                    "end_line": end_lineno,
+                    "line_count": line_count,
+                    "line_set": set(range(node.lineno, end_lineno + 1)),
+                })
 
     duplicate_candidates = []
-    seen_locations: set[tuple[str, int]] = set()
+    globally_counted_lines: dict[str, set[int]] = {}
 
-    for name, occurrences in functions_by_name.items():
+    for body_sig, occurrences in occurrences_by_hash.items():
         if len(occurrences) > 1:
-            # Check unique files
-            files = {occ["file"] for occ in occurrences}
-            if len(files) > 1:
-                # Add without double counting
-                new_occs = [occ for occ in occurrences if (occ["file"], occ["line"]) not in seen_locations]
-                if len(new_occs) >= 2:
-                    for occ in new_occs:
-                        seen_locations.add((occ["file"], occ["line"]))
-                    duplicate_candidates.append({
-                        "name": name,
-                        "occurrences": occurrences,
-                        "estimated_waste_lines": sum(occ["line_count"] for occ in occurrences[1:]),
-                    })
+            # Must appear in either multiple files or multiple distinct positions
+            unique_locs = {(occ["file"], occ["line"]) for occ in occurrences}
+            if len(unique_locs) >= 2:
+                # Calculate non-overlapping duplicate lines
+                waste_lines = 0
+                first_occ = occurrences[0]
+                for occ in occurrences[1:]:
+                    f = occ["file"]
+                    seen_for_file = globally_counted_lines.setdefault(f, set())
+                    # Only count lines not previously counted anywhere in waste
+                    new_lines = occ["line_set"] - seen_for_file
+                    waste_lines += len(new_lines)
+                    seen_for_file.update(new_lines)
+
+                names = sorted({occ["name"] for occ in occurrences})
+                is_same_name = len(names) == 1
+                duplicate_candidates.append({
+                    "name": names[0] if is_same_name else f"{names[0]} / {names[1]}",
+                    "names": names,
+                    "duplicate_type": "exact_structural_duplication",
+                    "explanation": (
+                        f"Functions {', '.join(names)} share identical normalized implementation structure."
+                        if not is_same_name
+                        else f"Function '{names[0]}' is duplicated identically across {len(occurrences)} locations."
+                    ),
+                    "occurrences": [
+                        {
+                            "name": occ["name"],
+                            "file": occ["file"],
+                            "line": occ["line"],
+                            "line_count": occ["line_count"],
+                        }
+                        for occ in occurrences
+                    ],
+                    "estimated_waste_lines": waste_lines,
+                })
 
     return duplicate_candidates
 
+
+def audit_dependencies(project_root: Path, detected_imports: list[str]) -> dict[str, Any]:
+    """Inspect project package manifests against detected imports for dependency hygiene."""
+    root = project_root.resolve()
+    manifests_found: list[str] = []
+    declared_dependencies: dict[str, str] = {}
+    unused_candidates: list[dict[str, Any]] = []
+
+    # 1. pyproject.toml
+    pyproject = root / "pyproject.toml"
+    if pyproject.is_file():
+        manifests_found.append("pyproject.toml")
+        try:
+            content = pyproject.read_text(encoding="utf-8", errors="ignore")
+            in_deps = False
+            for line in content.splitlines():
+                clean = line.strip()
+                if clean in ("[project.dependencies]", "dependencies = ["):
+                    in_deps = True
+                    continue
+                if in_deps:
+                    if clean.startswith("[") or clean == "]":
+                        in_deps = False
+                        continue
+                    m = re.match(r"""^['"]([a-zA-Z0-9_.-]+)""", clean)
+                    if m:
+                        pkg = m.group(1).lower().replace("-", "_")
+                        declared_dependencies[pkg] = "pyproject.toml"
+        except OSError:
+            pass
+
+    # 2. requirements.txt
+    reqs = root / "requirements.txt"
+    if reqs.is_file():
+        manifests_found.append("requirements.txt")
+        try:
+            content = reqs.read_text(encoding="utf-8", errors="ignore")
+            for line in content.splitlines():
+                clean = line.strip()
+                if clean and not clean.startswith("#"):
+                    m = re.match(r"""^([a-zA-Z0-9_.-]+)""", clean)
+                    if m:
+                        pkg = m.group(1).lower().replace("-", "_")
+                        declared_dependencies[pkg] = "requirements.txt"
+        except OSError:
+            pass
+
+    # 3. package.json
+    pkg_json = root / "package.json"
+    if pkg_json.is_file():
+        manifests_found.append("package.json")
+        try:
+            data = json.loads(pkg_json.read_text(encoding="utf-8", errors="ignore"))
+            deps = data.get("dependencies", {})
+            for d in deps.keys():
+                declared_dependencies[d.lower()] = "package.json"
+        except Exception:
+            pass
+
+    # 4. Other manifests (Go, Cargo, Java, C#, PHP, Ruby)
+    other_manifests = [
+        ("Cargo.toml", "Cargo"),
+        ("go.mod", "Go Modules"),
+        ("pom.xml", "Maven"),
+        ("build.gradle", "Gradle"),
+        ("composer.json", "Composer"),
+        ("Gemfile", "Bundler"),
+    ]
+    for filename, kind in other_manifests:
+        if (root / filename).is_file():
+            manifests_found.append(filename)
+
+    normalized_imports = {imp.lower().replace("-", "_") for imp in detected_imports}
+
+    # Standard tool packages that shouldn't be flagged as unused
+    common_tool_packages = {
+        "pytest", "ruff", "mypy", "black", "flake8", "coverage",
+        "playwright", "typer", "pydantic", "pip", "setuptools", "wheel",
+        "typescript", "eslint", "prettier", "jest", "vitest", "webpack", "vite",
+    }
+
+    for pkg, manifest_source in declared_dependencies.items():
+        if pkg in common_tool_packages:
+            continue
+        # Check if imported directly or subpackage
+        is_imported = any(pkg == imp or imp.startswith(f"{pkg}.") or imp.startswith(f"{pkg}/") for imp in normalized_imports)
+        if not is_imported:
+            unused_candidates.append({
+                "id": f"dep-unused-{len(unused_candidates) + 1}",
+                "package": pkg,
+                "manifest": manifest_source,
+                "category": "potentially_unused_dependency",
+                "severity": "Low",
+                "confidence": "Medium",
+                "finding_state": "Requires Owner Confirmation",
+                "explanation": f"Package '{pkg}' is declared in {manifest_source} but has no direct import references in application code.",
+                "why_false_positive": "Package may be a CLI tool, build utility, dev dependency, or imported dynamically via plugins.",
+                "recommended_action": "Verify if this package is still required before removing it from dependencies.",
+            })
+
+    return {
+        "manifests_found": manifests_found,
+        "total_declared": len(declared_dependencies),
+        "potentially_unused": unused_candidates,
+    }
+
+
+def audit_repository(project_root: Path) -> dict[str, Any]:
+    """Comprehensive multi-language repository audit with ghost feature detection."""
+    root = project_root.resolve()
+    registry = LanguageRegistry()
+    scan_data = registry.scan_repository(root)
+
+    # 1. Project Context
+    context = detect_project_context(root)
+
+    # 2. Ghost Features
+    ghost_features = detect_ghost_features(root, scan_data)
+
+    # 3. Routes & Mismatches
+    routes: list[RouteDefinition] = scan_data.get("routes", [])
+    client_calls: list[ClientCall] = scan_data.get("client_calls", [])
+
+    missing_route_candidates = []
+    method_mismatches = []
+    potentially_unused_endpoints = []
+    uncovered_routes = []
+
+    # Check test files
+    test_contents = ""
+    for test_path in root.rglob("*"):
+        if test_path.is_file() and ("test" in test_path.name.lower() or "test" in test_path.parts):
+            try:
+                test_contents += test_path.read_text(encoding="utf-8", errors="ignore") + "\n"
+            except OSError:
+                pass
+
+    doc_text = ""
+    for doc in root.glob("*.md"):
+        try:
+            doc_text += doc.read_text(encoding="utf-8", errors="ignore") + "\n"
+        except OSError:
+            pass
+
+    registered_paths = {r.path for r in routes}
+
+    for call in client_calls:
+        endpoint = call.path
+        req_method = call.method.upper()
+        matching = [r for r in routes if match_route(endpoint, r.path)]
+        if not matching and (endpoint.startswith("/api") or endpoint.startswith("/v1")):
+            missing_route_candidates.append({
+                "id": f"missing-route-{len(missing_route_candidates) + 1}",
+                "category": "missing_route",
+                "severity": "High",
+                "confidence": "Medium",
+                "evidence": call.raw,
+                "source": call.source,
+                "line": call.line,
+                "endpoint": endpoint,
+                "method": req_method,
+                "explanation": f"Client calls '{req_method} {endpoint}', but no backend route handler was registered.",
+                "potential_impact": "Client requests will likely fail with HTTP 404.",
+                "why_false_positive": "Endpoint may be served by an external microservice, reverse proxy, or dynamic route loader.",
+                "recommended_action": "Verify if the route is implemented in another service or implement the missing endpoint.",
+            })
+        elif matching:
+            supported = {m.upper() for r in matching for m in r.methods}
+            if "ALL" not in supported and req_method not in supported:
+                method_mismatches.append({
+                    "id": f"mismatch-{len(method_mismatches) + 1}",
+                    "category": "method_path_mismatch",
+                    "severity": "High",
+                    "confidence": "High",
+                    "evidence": f"Client calls {req_method} | Route supports {sorted(supported)}",
+                    "source": call.source,
+                    "line": call.line,
+                    "endpoint": endpoint,
+                    "client_method": req_method,
+                    "allowed_methods": sorted(supported),
+                    "explanation": f"Client calls {req_method} on '{endpoint}', but route only accepts {sorted(supported)}.",
+                    "potential_impact": "Requests will fail with HTTP 405 Method Not Allowed.",
+                    "why_false_positive": "Method might be rewritten by gateway or middleware.",
+                    "recommended_action": f"Add {req_method} to route handler or update client method.",
+                })
+
+    for route in routes:
+        path = route.path
+        func = route.function
+        frontend_refs = [c for c in client_calls if match_route(c.path, path)]
+        in_tests = path in test_contents or func in test_contents
+        in_docs = path in doc_text
+
+        if not in_tests:
+            uncovered_routes.append({
+                "id": f"uncovered-{len(uncovered_routes) + 1}",
+                "category": "testing_gap",
+                "severity": "Medium",
+                "confidence": "High",
+                "endpoint": path,
+                "methods": route.methods,
+                "source": route.source,
+                "line": route.line,
+                "explanation": f"Route '{path}' ({func}) has no identified assertions in the test suite.",
+                "recommended_action": "Add an integration or unit test verifying this route.",
+            })
+
+        if not frontend_refs and not in_tests and not in_docs:
+            potentially_unused_endpoints.append({
+                "id": f"unused-{len(potentially_unused_endpoints) + 1}",
+                "category": "potentially_unused_endpoint",
+                "severity": "Low",
+                "confidence": "Low",
+                "finding_state": "Requires Owner Confirmation",
+                "endpoint": path,
+                "methods": route.methods,
+                "source": route.source,
+                "line": route.line,
+                "explanation": f"Endpoint '{path}' has no static callers in frontend, tests, or documentation.",
+                "why_false_positive": "Endpoint may be consumed by external webhooks, mobile apps, or public API clients.",
+                "recommended_action": "Confirm with feature owner before deprecating or removing.",
+            })
+
+    # 4. Empty & Unfinished Implementations
+    unfinished_items = scan_data.get("unfinished", [])
+    empty_candidates = []
+    for item in unfinished_items:
+        # Separate intentional abstract methods from real candidates
+        if item.is_abstract_or_protocol:
+            continue
+        empty_candidates.append({
+            "id": f"unfinished-{len(empty_candidates) + 1}",
+            "category": "empty_or_unfinished_implementation",
+            "item_type": item.item_type,
+            "name": item.name,
+            "severity": "Medium",
+            "confidence": item.confidence,
+            "evidence": item.evidence,
+            "source": item.source,
+            "line": item.line,
+            "explanation": item.explanation,
+            "why_intentional": item.why_intentional,
+            "recommended_action": "Complete the implementation or document intentional stub behavior.",
+        })
+
+    # 5. Dependency Hygiene
+    dep_audit = audit_dependencies(root, scan_data.get("imports", []))
+
+    # 6. Structural Duplicate Logic
+    py_files = [root / p.source for p in scan_data.get("symbols", []) if p.source.endswith(".py")]
+    # Deduplicate paths
+    unique_py_files = list({root / Path(p): p for p in py_files if (root / Path(p)).is_file()}.keys())
+    duplicates = estimate_duplicate_blocks(unique_py_files)
+
+    # Calculate total non-overlapping waste
+    total_waste_lines = sum(d.get("estimated_waste_lines", 0) for d in duplicates)
+
+    return {
+        "schema_version": "2.0",
+        "project_context": context,
+        "capability_matrix": scan_data.get("capability_matrix", []),
+        "detected_languages": scan_data.get("detected_languages", []),
+        "frameworks": scan_data.get("frameworks", []),
+        "total_routes": len(routes),
+        "total_client_calls": len(client_calls),
+        "total_components": len(scan_data.get("components", [])),
+        "total_ui_actions": len(scan_data.get("ui_actions", [])),
+        "ghost_features": ghost_features,
+        "empty_or_unfinished": empty_candidates,
+        "missing_route_candidates": missing_route_candidates,
+        "method_mismatches": method_mismatches,
+        "potentially_unused_endpoints": potentially_unused_endpoints,
+        "uncovered_routes": uncovered_routes,
+        "dependency_hygiene": dep_audit,
+        "duplicate_logic": duplicates,
+        "code_waste_estimate": {
+            "duplicate_lines": total_waste_lines,
+            "explanation": "Calculated from non-overlapping duplicate function implementation lines only.",
+        },
+        "limitations": [
+            "AST and structural regex analysis inspects static files without importing untrusted runtime code.",
+            "Dynamic route registration, reverse proxying, and reflection cannot be statically proven and receive caveat tags.",
+            "Potentially unused endpoints and dependencies require owner confirmation before removal.",
+        ],
+    }
+
+
+def audit_repository_routes(project_root: Path) -> dict[str, Any]:
+    """Backwards-compatible wrapper returning route connection findings."""
+    full_audit = audit_repository(project_root)
+    return {
+        "schema_version": "1.0",
+        "total_routes_inspected": full_audit["total_routes"],
+        "total_frontend_calls_inspected": full_audit["total_client_calls"],
+        "missing_route_candidates": full_audit["missing_route_candidates"],
+        "potentially_unused_endpoints": full_audit["potentially_unused_endpoints"],
+        "uncovered_routes": full_audit["uncovered_routes"],
+        "limitations": full_audit["limitations"],
+    }
