@@ -23,6 +23,16 @@ IGNORED_DIRECTORIES = {
     "node_modules",
     "venv",
     ".eggs",
+    ".next",
+    "vendor",
+    "coverage",
+    ".turbo",
+    ".nuxt",
+    ".cache",
+    "out",
+    "target",
+    "bin",
+    "obj",
 }
 
 EXAMPLE_AND_FIXTURE_NAMES = {

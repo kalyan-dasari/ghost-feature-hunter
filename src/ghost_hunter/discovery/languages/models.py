@@ -88,11 +88,21 @@ class SymbolDefinition:
 
 
 @dataclass
+class FeatureFlagDefinition:
+    name: str
+    source: str
+    line: int
+    is_defined: bool = True
+    has_consumers: bool = False
+    consumer_count: int = 0
+    raw: str = ""
+
+
+@dataclass
 class FrameworkCapability:
     language: str
     framework: str
     detected: bool
     status: str  # "supported", "partial", "inventory-only", "not detected"
-    capabilities: list[str] = field(default_factory=list)
+    capabilities: dict[str, bool] = field(default_factory=dict)
     limitations: list[str] = field(default_factory=list)
-
