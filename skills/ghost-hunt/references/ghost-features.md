@@ -108,3 +108,4 @@ Never report a ghost feature without considering dynamic and runtime architectur
 2. **Dynamic Routing:** Next.js catch-all routes (`[...slug].tsx`) or Express regex routers can handle paths that do not have literal string matches.
 3. **Public Webhooks:** Backend endpoints without frontend callers are frequently external webhooks (e.g. Stripe, GitHub, Twilio) or mobile API endpoints.
 4. **Parent Event Delegation:** In frontend architectures, buttons without explicit `onClick` attributes might be handled by event delegation on parent containers.
+

@@ -270,3 +270,4 @@ def detect_ghost_features(
                     })
 
     return ghost_candidates
+

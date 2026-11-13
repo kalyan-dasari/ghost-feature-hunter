@@ -95,3 +95,4 @@ class FrameworkCapability:
     status: str  # "supported", "partial", "inventory-only", "not detected"
     capabilities: list[str] = field(default_factory=list)
     limitations: list[str] = field(default_factory=list)
+

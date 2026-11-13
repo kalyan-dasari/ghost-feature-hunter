@@ -164,3 +164,4 @@ class LanguageRegistry:
             "exports": sorted(set(all_exports)),
             "calls_made": sorted(set(all_calls_made)),
         }
+
