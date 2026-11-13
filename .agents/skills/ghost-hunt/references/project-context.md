@@ -12,7 +12,8 @@ When invoked, the agent inspects the environment using native tools:
 2. **Git Root Detection:** Locate `.git` directory in current or parent folders to establish repository bounds.
 3. **Project Manifests:** Read `pyproject.toml`, `package.json`, `Cargo.toml`, `go.mod`, or build files to determine project name and ecosystem.
 4. **Primary Languages & Frameworks:** Detect extensions (`.py`, `.ts`, `.js`, `.go`, `.rs`, `.html`) and framework dependencies (Flask, FastAPI, Django, Next.js, Express, React).
-5. **Directory Classification:**
+5. **Language Detection vs Analysis Support:** Distinguish between detected languages and implemented analysis capabilities. *(See [references/language-support.md](language-support.md))*
+6. **Directory Classification:**
    - **Primary Application Source:** `src/`, `lib/`, `app/`, `skills/`, `integrations/`, root modules.
    - **Test Suites:** `tests/`, `test/`, `spec/`, `__tests__/`.
    - **Documentation:** `docs/`, `*.md`.
@@ -44,7 +45,7 @@ For any repository:
 |---|---|
 | `/ghost-hunt discover` | Run static architecture and boundary discovery without mutations. |
 | `/ghost-hunt investigate <feature>` | Investigate the named feature in the primary target application. |
-| `/ghost-hunt audit` | Perform whole-repository architecture and connection audit. |
+| `/ghost-hunt audit` | Perform whole-repository architecture, ghost feature, and connection audit. |
 | `/ghost-hunt verify <feature>` | Re-verify approved code fixes and run regression checks. |
 | `/ghost-hunt investigate` (bare) | **Do not guess a feature or pick an example app.** Display detected project context, summarize primary structure, and ask the user which feature they want to investigate or offer whole-repo audit. |
 
