@@ -75,17 +75,17 @@ def classify_source_role(rel_path: Path | str, root: Path | None = None) -> str:
     ):
         return "generated"
 
-    # 4. Test
+    # 4. Fixture
+    if any(p in {"fixture", "fixtures", "mock", "mocks", "testdata", "test_data", "__mocks__"} for p in parts_lower):
+        return "fixture"
+
+    # 5. Test
     if (
         any(p in {"tests", "test", "__tests__", "spec", "specs", "e2e"} for p in parts_lower)
         or name_lower.startswith(("test_", "test-"))
         or name_lower.endswith(("_test.py", "-test.py", ".test.js", ".test.jsx", ".test.ts", ".test.tsx", ".spec.js", ".spec.jsx", ".spec.ts", ".spec.tsx"))
     ):
         return "test"
-
-    # 5. Fixture
-    if any(p in {"fixture", "fixtures", "mock", "mocks", "testdata", "test_data", "__mocks__"} for p in parts_lower):
-        return "fixture"
 
     # 6. Benchmark
     if any(p in {"benchmark", "benchmarks", "perf", "perfs"} for p in parts_lower):
