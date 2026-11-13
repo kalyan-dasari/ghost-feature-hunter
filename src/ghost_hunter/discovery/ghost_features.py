@@ -323,7 +323,7 @@ def detect_ghost_features(
         if sym.symbol_type in ("function", "service") and not sym.name.startswith("_"):
             source_lower = sym.source.lower()
             if "service" in source_lower or "controller" in source_lower:
-                effective_calls = production_calls_made if production_calls_made else calls_made
+                effective_calls = production_calls_made
                 if sym.name not in effective_calls:
                     in_tests = sym.name in test_calls_made
                     present_links = [

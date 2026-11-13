@@ -134,17 +134,18 @@ Deliver a structured Markdown audit report starting with the Project Context Sum
 
 ## 🏛️ The Whole-Repository Audit Protocol (`/ghost-hunt audit`)
 
-When invoked with `/ghost-hunt audit`, inspect the complete repository:
-1. **Architecture & Capability Inventory:** Map applications, services, routes, models, frontend assets, tests, configurations, and the Language/Framework Capability Matrix.
-2. **Route Connection Analysis:**
-   - **Missing Route Candidates:** Frontend calls an endpoint with no registered backend handler.
+When invoked with `/ghost-hunt audit`, inspect the complete repository with scope awareness:
+1. **Architecture & Scope Inventory:** Map application boundaries, source-role classifications (`application_source`, `example`, `demo`, `test`, `fixture`, `documentation`, `configuration`), and the Language/Framework Capability Matrix.
+2. **Scope-Segregated Findings:** Strictly separate primary application findings from intentionally broken examples (`examples/`), test suites (`tests/`), fixtures, and documentation.
+3. **Route Connection Analysis:**
+   - **Cross-Service & External Matching:** Distinguish local routes, cross-service routes within monorepos, and external service calls (`https://...`). Unmatched routes under reverse-proxy configs are marked as proxy candidates.
    - **Method / Path Mismatches:** Client dispatches an HTTP method or path differing from the registered handler.
-   - **Potentially Unused Endpoints:** Routes with 0 callers in frontend, tests, or docs (candidates only; check external webhooks).
-   - **Uncovered Routes:** Registered endpoints with zero matching tests in test suites.
-3. **Ghost Feature Detection:** Identify broken chains across UI navigation, buttons, forms, client calls, routes, and services. *(Consult [references/ghost-features.md](references/ghost-features.md))*
-4. **Empty & Unfinished Implementations:** Surface empty functions, placeholder handlers, unhandled exceptions, and silent error catches (excluding abstract methods and interface declarations).
-5. **Reference Graph & Dependency Hygiene:** Identify unreferenced exported symbols and unused manifest packages with dynamic loading caveats.
-6. **Structural Duplicate Logic:** Detect identical normalized function bodies across different names without double-counting lines. *(Consult [references/repository-audit.md](references/repository-audit.md))*
+   - **Potentially Unused Endpoints:** Routes with 0 callers in frontend, tests, or docs (candidates requiring owner confirmation).
+   - **Route Test Coverage (Function-Level):** Evaluates whether individual test cases invoke the route and assert on the response (`test_assertion_candidate`, `test_reference_candidate`, or `testing_gap_candidate`). Never claims static `test_verified`.
+4. **Ghost Feature Detection:** Identify broken chains across UI navigation, buttons, forms, client calls, routes, and services. *(Consult [references/ghost-features.md](references/ghost-features.md))*
+5. **Empty & Unfinished Implementations:** Surface empty functions, placeholder handlers, unhandled exceptions, and silent error catches (excluding abstract methods, interfaces, and test mocks).
+6. **Application Boundaries & Dependency Hygiene:** Attribute package manifests to owning application roots. Distinguish runtime vs dev/test/build dependencies. Disclose unsupported dependency ecosystems (Cargo, go.mod, etc.) as inventory-only.
+7. **Structural Duplicate Logic:** Detect identical normalized function bodies across application source files without double-counting lines. *(Consult [references/repository-audit.md](references/repository-audit.md))*
 
 ---
 

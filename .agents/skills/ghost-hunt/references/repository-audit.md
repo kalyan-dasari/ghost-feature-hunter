@@ -26,10 +26,17 @@ Map all repository components and declare explicit analysis capabilities:
 
 ### Part 2: Route & Endpoint Connection Analysis
 Cross-reference backend route handlers against frontend callers and tests:
-1. **Missing Route Candidates:** Frontend calls an endpoint (e.g. `fetch('/api/users/profile')`) that matches no registered backend route.
-2. **Method / Path Mismatches:** Client dispatches a `POST` where the backend route strictly requires `GET`, or calls an incompatible parameterized path.
+1. **Missing Route Candidates:** Frontend calls an endpoint with no registered backend route in its local application or across services.
+   - **Cross-Service Matching:** If an API client in `frontend` calls `/api/users` and `backend` registers `/api/users`, classify as `matching_service_route` (not missing).
+   - **External Service Calls:** Calls targeting external origins (`http://`, `https://`, `api.stripe.com`, etc.) are recognized as external calls and never flagged as missing local routes.
+   - **Reverse-Proxy Candidates:** When reverse-proxy or gateway configurations (`next.config.js` rewrites, Vite proxy, Nginx `proxy_pass`) exist, unmatched endpoints are reported as low-confidence reverse-proxy candidates rather than confirmed missing routes.
+2. **Method / Path Mismatches:** Client dispatches an HTTP method or parameterized path incompatible with the route handler.
 3. **Potentially Unused Endpoints:** Backend registers a route, but no static callers exist in frontend, tests, or documentation. (Always label as *candidates*—they may serve external webhooks or mobile clients).
-4. **Uncovered Routes:** Registered endpoints with zero matching tests in the test suite. (Testing gaps, not necessarily broken code).
+4. **Route Test Coverage Evaluation (Function-Level):**
+   - **`test_assertion_candidate`:** A single test function/case calls the route AND asserts on response attributes (`status_code`, `json()`, `data`, `text`).
+   - **`test_reference_candidate`:** Route is mentioned in a test file, string literal, fixture, or call without response assertion (or call in one test and assertion in another).
+   - **`testing_gap_candidate`:** Route is absent from tests or mentioned only in comments.
+   - **Critical Rule:** Static analysis NEVER claims `test_verified`. That status is reserved exclusively for runtime verified journey execution.
 
 ### Part 3: Ghost Feature & Unfinished Implementation Detection
 Discover features that appear to exist in one layer but have missing or incomplete implementation paths:
@@ -38,7 +45,7 @@ Discover features that appear to exist in one layer but have missing or incomple
   - Action button with empty or missing event handler (`onClick={() => {}}`).
   - Form collecting user inputs without an `onSubmit` handler or `action` pipeline.
   - Route with an empty, pass, or `NotImplementedError` body.
-  - Orphaned business service functions with zero callers.
+  - Orphaned business service functions with zero callers in production application code (test references are recognized but do not disguise dead production code).
   *(See [references/ghost-features.md](ghost-features.md))*
 - **Empty / Unfinished Implementation Candidates:**
   - Empty functions or methods (`pass`, `...`, `placeholder return`).
@@ -48,11 +55,11 @@ Discover features that appear to exist in one layer but have missing or incomple
   - **Context Filter:** Never report abstract methods (`@abstractmethod`, `abc.ABC`, `typing.Protocol`), interface declarations, or test mocks as defects!
 
 ### Part 4: Reference Graph & Dependency Hygiene
-Build a static reference graph across source files and package manifests:
-- **Symbol Reference Graph:** Identify exported symbols and internal functions with no callers.
-- **Finding States:** Classify symbols as `Confirmed Referenced`, `No Static References Found`, or `Requires Owner Confirmation`. Never delete code automatically.
-- **Package Manifest Audit:** Check `pyproject.toml`, `package.json`, `Cargo.toml`, `go.mod`, etc. Flag declared dependencies with no static imports in application source.
-- **Dynamic Loading Caveats:** Evaluate plugins, dynamic imports, reflection, CLI entry points, and peer dependencies before reporting unused items.
+Build a static reference graph across source files and package manifests per application boundary:
+- **Application Attribution:** Associate manifests with their owning application (e.g. `backend/pyproject.toml` vs `frontend/package.json`).
+- **Dependency Classification:** Distinguish `runtime`, `dev`, `test`, `build`, and `optional` dependencies. Only runtime dependencies without application imports are flagged as potentially unused.
+- **Inventory-Only Manifests:** For unsupported dependency ecosystems (`Cargo.toml`, `go.mod`, `pom.xml`, `build.gradle`, `composer.json`, `Gemfile`), disclose them as `inventory-only` with `usage_analysis_supported: False`. Do not falsely claim import usage analysis.
+- **Finding States:** Classify unused dependencies as `Requires Owner Confirmation` with severity `Low`. Never delete packages automatically.
 
 ### Part 5: Structural Duplicate Logic
 Identify redundant implementation logic comparing normalized syntax bodies, **not matching names**:
