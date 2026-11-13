@@ -20,8 +20,9 @@ Whether executed directly by an AI coding agent or through the optional Python C
 
 ### Level 3 — Runtime Mutating Operations (Requires User Authorization)
 - State-altering HTTP methods (`POST`, `PUT`, `PATCH`, `DELETE`) and browser form submissions.
-- **Requires explicit user authorization.** In the Python CLI, this requires both `"allow_writes": true` in `ghost-hunter.json` and `--allow-writes` on the command line.
+- **Requires explicit user authorization.** In the Python CLI, this requires both `"allow_writes": true` in `ghost-hunter.json` and `--allow-writes` on the command line. In interactive chat, the agent must ask for user authorization before issuing mutating calls against running services.
 - Must execute against disposable, isolated test targets with synthetic data.
+- Must strictly isolate stateful scenarios to prevent state contamination between sequential checks.
 
 ### Level 4 — Database Write Operations (Strictly Isolated)
 - Direct database mutations (`INSERT`, `UPDATE`, `DELETE`, `DROP`).
@@ -31,7 +32,28 @@ Whether executed directly by an AI coding agent or through the optional Python C
 
 ---
 
-## 2. Absolute Safety Guardrails
+## 2. Stateful Scenario Isolation & False PASS Prevention
+
+Testing stateful application features (e.g., shopping cart checkout, order confirmation, inventory decrement, wallet balance deduction) introduces the risk of **test state contamination**.
+
+When verification checks are executed sequentially against a shared database:
+- Side effects from Check A (e.g., an earlier test with invalid negative quantities that erroneously decremented stock from 10 to 9) alter the initial conditions of Check B.
+- If Check B then purchases 2 units and decrements stock from 9 to 8, a naive verification check asserting `stock == 8` evaluates to **`PASS`**.
+- This produces a **false PASS**: it masks the critical bug that purchasing 2 units only decremented stock by 1 unit (`stock - 1`), simply because `9 - 1 == 8`!
+
+### Mandatory Scenario Isolation Rules:
+1. **Fresh Disposable Databases:** Every scenario must run against a fresh database copy or transaction rollback. Never share mutable state across independent verification scenarios.
+2. **Deterministic Initial Seeding:** Tables must be seeded with known initial values before the scenario executes (e.g., product stock set to `10`).
+3. **Explicit Before-and-After Baseline Measurements:**
+   - **Before:** Query and record the baseline value (`initial_stock = 10`).
+   - **Execute:** Perform the action (e.g., purchase 2 units).
+   - **After:** Query and record the post-execution value (`final_stock`).
+4. **Delta Evaluation:** Assertions must evaluate the delta (`final_stock == initial_stock - quantity`), never just an assumed absolute ending state.
+5. **PASS Evidence Contract:** A `PASS` status is prohibited without recorded baseline and post-execution evidence. If baseline evidence is unavailable, the result must be reported as `UNKNOWN`.
+
+---
+
+## 3. Absolute Safety Guardrails
 
 ### Production Protection
 - Any target environment configured as `production` is blocked by default.
@@ -59,7 +81,7 @@ Whether executed directly by an AI coding agent or through the optional Python C
 
 ---
 
-## 3. Limits & User Responsibilities
+## 4. Limits & User Responsibilities
 
 - **Redaction is Best Effort:** Automatic redaction cannot guarantee detection of every proprietary string or secret. Never run verification journeys against production credentials.
 - **Reports are Unsigned:** Saved Markdown and JSON reports are plain text developer artifacts and can be edited. Always review the journey steps and captured evidence before sharing.
@@ -67,6 +89,6 @@ Whether executed directly by an AI coding agent or through the optional Python C
 
 ---
 
-## 4. Reporting Security Issues
+## 5. Reporting Security Issues
 
 Please report security issues privately to the repository maintainers before public disclosure. Do not include live credentials or sensitive personal data in issue reports.

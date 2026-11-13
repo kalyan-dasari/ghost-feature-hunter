@@ -144,6 +144,29 @@ def discover(
     typer.echo(f"JSON: {json_path}\nMarkdown: {markdown_path}")
 
 
+@app.command(name="audit-routes")
+def audit_routes(
+    project_root: Path = typer.Option(Path.cwd(), "--project-root", "-p", help="Project root to inspect."),
+) -> None:
+    """Statically audit route connections between backend handlers and frontend callers."""
+    root = project_root.resolve()
+    from ghost_hunter.discovery.audit import audit_repository_routes
+
+    result = audit_repository_routes(root)
+    typer.echo(f"Routes inspected: {result['total_routes_inspected']}")
+    typer.echo(f"Frontend calls inspected: {result['total_frontend_calls_inspected']}")
+    typer.echo(f"Missing route candidates: {len(result['missing_route_candidates'])}")
+    typer.echo(f"Potentially unused endpoints: {len(result['potentially_unused_endpoints'])}")
+    typer.echo(f"Uncovered routes (no tests): {len(result['uncovered_routes'])}")
+    for candidate in result["missing_route_candidates"]:
+        typer.echo(f"  [MISSING] {candidate['endpoint']} (called from {candidate['source']}:{candidate['line']})")
+    for unused in result["potentially_unused_endpoints"]:
+        typer.echo(f"  [UNUSED CANDIDATE] {unused['endpoint']} ({unused['source']}:{unused['line']})")
+    for uncovered in result["uncovered_routes"]:
+        typer.echo(f"  [UNCOVERED] {uncovered['endpoint']} ({uncovered['source']}:{uncovered['line']})")
+
+
+
 @app.command()
 def report(
     report_json: Path = typer.Argument(..., help="Existing Ghost Hunter JSON report."),

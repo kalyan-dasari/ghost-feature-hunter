@@ -22,6 +22,7 @@ IGNORED_DIRS = {
     "venv",
 }
 FRONTEND_SUFFIXES = {".html", ".css", ".js", ".jsx", ".ts", ".tsx", ".vue", ".svelte"}
+from ghost_hunter.discovery.project import detect_project_context, is_example_or_fixture
 
 
 def _literal(node: ast.AST | None) -> Any:
@@ -139,6 +140,7 @@ def discover_project(project_root: Path) -> dict[str, Any]:
                                 "path": route["path"],
                                 "source": relative,
                                 "line": decorator.lineno,
+                                "is_example": is_example_or_fixture(relative),
                             }
                         )
             if isinstance(node, ast.ClassDef):
@@ -147,14 +149,21 @@ def discover_project(project_root: Path) -> dict[str, Any]:
                     base.endswith("Model") or base.endswith("DeclarativeBase") or base == "Base"
                     for base in bases
                 ):
-                    models.append({"class": node.name, "source": relative, "line": node.lineno})
+                    models.append({
+                        "class": node.name,
+                        "source": relative,
+                        "line": node.lineno,
+                        "is_example": is_example_or_fixture(relative),
+                    })
 
     routes.sort(key=lambda item: (item["source"], item["line"]))
+    project_context = detect_project_context(root)
     return {
         "schema_version": "1.0",
         "analysis_mode": "static",
         "runtime_verified": False,
         "project_path": str(root),
+        "context": project_context,
         "framework_support": "Flask static route conventions" if flask_signal else "not detected",
         "routes": routes,
         "models": models,
@@ -171,30 +180,62 @@ def discover_project(project_root: Path) -> dict[str, Any]:
 
 
 def render_discovery_markdown(result: dict[str, Any]) -> str:
+    ctx = result.get("context", {})
     lines = [
-        "# Ghost Feature Hunter discovery",
+        "# Ghost Feature Hunter Discovery",
         "",
-        f"- Project: `{result['project_path']}`",
-        "- Analysis: static syntax scan; runtime behavior was not verified.",
-        f"- Framework support: {result['framework_support']}",
+        "### Project Context Summary",
+        f"- **Project Name:** `{ctx.get('project_name', Path(result['project_path']).name)}`",
+        f"- **Project Root:** `{result['project_path']}`",
+        f"- **Git Repository Root:** `{ctx.get('git_root') or 'Not a git repository'}`",
+        f"- **Selected Application Root:** `{ctx.get('selected_app_root', result['project_path'])}`",
+        f"- **Framework Support:** {result['framework_support']}",
+        f"- **Languages:** {', '.join(ctx.get('languages', [])) or 'None detected'}",
+        "- **Investigation Mode:** Project Discovery",
+        "- **Analysis:** Static syntax scan; runtime behavior was not verified.",
         "",
         "## Routes",
         "",
     ]
-    if result["routes"]:
+    primary_routes = [r for r in result.get("routes", []) if not r.get("is_example")]
+    example_routes = [r for r in result.get("routes", []) if r.get("is_example")]
+
+    if primary_routes:
+        lines.append("### Application Routes")
         lines.extend(
             f"- `{', '.join(route['methods'])} {route['path']}` → `{route['function']}` "
             f"({route['source']}:{route['line']})"
-            for route in result["routes"]
+            for route in primary_routes
         )
-    else:
+        lines.append("")
+    if example_routes:
+        lines.append("### Example & Benchmark Routes (Non-Production Scope)")
+        lines.extend(
+            f"- `[EXAMPLE] {', '.join(route['methods'])} {route['path']}` → `{route['function']}` "
+            f"({route['source']}:{route['line']})"
+            for route in example_routes
+        )
+        lines.append("")
+    if not primary_routes and not example_routes:
         lines.append("No literal Flask routes detected.")
-    for title, key in (("Database models", "models"), ("Existing tests", "tests"), ("Frontend files", "frontend_files"), ("Service/controller files", "service_files")):
-        lines.extend(["", f"## {title}", ""])
-        lines.extend(f"- `{item if isinstance(item, str) else item['class'] + ' (' + item['source'] + ')'}`" for item in result[key])
+        lines.append("")
+
+    for title, key in (
+        ("Database Models", "models"),
+        ("Existing Tests", "tests"),
+        ("Frontend Files", "frontend_files"),
+        ("Service / Controller Files", "service_files"),
+    ):
+        lines.extend([f"## {title}", ""])
+        lines.extend(
+            f"- `{item if isinstance(item, str) else item['class'] + ' (' + item['source'] + ')'}`"
+            for item in result[key]
+        )
         if not result[key]:
             lines.append("None detected.")
-    lines.extend(["", "## Limitations", ""])
+        lines.append("")
+
+    lines.extend(["## Limitations", ""])
     lines.extend(f"- {item}" for item in result["limitations"])
     return "\n".join(lines) + "\n"
 
