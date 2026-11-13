@@ -235,6 +235,7 @@ def discover(
                     "methods": r.methods,
                     "source": r.source,
                     "line": r.line,
+                    "function": r.function,
                     "framework": r.framework,
                     "app_name": r.app_name,
                     "source_role": r.source_role,
@@ -243,20 +244,21 @@ def discover(
                 known_route_paths.add(r.path)
 
         # Primary multi-language discovery result with backwards compatibility
-        result = {
-            "schema_version": "2.0",
-            "project_path": str(root),
-            "project_name": context.get("project_name", "unknown"),
-            "context": context,
-            "analysis_mode": "static",
-            "runtime_verified": False,
-            "languages": scan_data.get("detected_languages", []),
-            "frameworks": [f["framework"] for f in scan_data.get("frameworks", [])],
-            "application_boundaries": scan_data.get("application_boundaries", []),
-            "source_role_inventory": scan_data.get("source_role_inventory", {}),
-            "capability_matrix": scan_data.get("capability_matrix", []),
-            "routes": combined_routes,
-            "models": flask_result.get("models", []) or [
+        result = dict(flask_result)
+        result["schema_version"] = "2.0"
+        result["project_path"] = str(root)
+        result["project_name"] = context.get("project_name", "unknown")
+        result["context"] = context
+        result["analysis_mode"] = "static"
+        result["runtime_verified"] = False
+        result["languages"] = scan_data.get("detected_languages", [])
+        result["frameworks"] = [f["framework"] for f in scan_data.get("frameworks", [])]
+        result["application_boundaries"] = scan_data.get("application_boundaries", [])
+        result["source_role_inventory"] = scan_data.get("source_role_inventory", {})
+        result["capability_matrix"] = scan_data.get("capability_matrix", [])
+        result["routes"] = combined_routes
+        if not result.get("models") and scan_data.get("models"):
+            result["models"] = [
                 {
                     "class": m.name,
                     "name": m.name,
@@ -267,39 +269,35 @@ def discover(
                     "is_example": False,
                 }
                 for m in scan_data.get("models", [])
-            ],
-            "client_calls": [
-                {
-                    "path": c.path,
-                    "method": c.method,
-                    "source": c.source,
-                    "line": c.line,
-                    "framework": c.framework,
-                    "app_name": c.app_name,
-                    "call_type": c.call_type,
-                }
-                for c in scan_data.get("client_calls", [])
-            ],
-            "components": [
-                {
-                    "name": comp.name,
-                    "source": comp.source,
-                    "line": comp.line,
-                    "framework": comp.framework,
-                    "app_name": comp.app_name,
-                }
-                for comp in scan_data.get("components", [])
-            ],
-            # Legacy Flask discovery retained for backwards compatibility
-            "flask_compatibility": flask_result,
-            "framework_support": flask_result.get("framework_support", "generic"),
-            "tests": flask_result.get("tests", []),
-            "frontend_files": flask_result.get("frontend_files", []),
-            "multi_language": {
-                "detected_languages": scan_data.get("detected_languages", []),
-                "frameworks": [f["framework"] for f in scan_data.get("frameworks", [])],
-                "capability_matrix": scan_data.get("capability_matrix", []),
-            },
+            ]
+        result["client_calls"] = [
+            {
+                "path": c.path,
+                "method": c.method,
+                "source": c.source,
+                "line": c.line,
+                "framework": c.framework,
+                "app_name": c.app_name,
+                "call_type": c.call_type,
+            }
+            for c in scan_data.get("client_calls", [])
+        ]
+        result["components"] = [
+            {
+                "name": comp.name,
+                "source": comp.source,
+                "line": comp.line,
+                "framework": comp.framework,
+                "app_name": comp.app_name,
+            }
+            for comp in scan_data.get("components", [])
+        ]
+        # Legacy Flask discovery retained for backwards compatibility
+        result["flask_compatibility"] = flask_result
+        result["multi_language"] = {
+            "detected_languages": scan_data.get("detected_languages", []),
+            "frameworks": [f["framework"] for f in scan_data.get("frameworks", [])],
+            "capability_matrix": scan_data.get("capability_matrix", []),
         }
         json_path, markdown_path = write_discovery(result, _safe_report_dir(root, config.report_dir), force=force)
     except (ValueError, OSError, FileExistsError) as exc:
