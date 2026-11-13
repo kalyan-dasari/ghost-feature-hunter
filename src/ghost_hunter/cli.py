@@ -133,35 +133,77 @@ def render_audit_markdown(audit_data: dict[str, Any]) -> str:
         f"- **Files Scanned**: {audit_data.get('file_count', 0)} (Limit: {audit_data.get('file_limit', 15000)}, Truncated: {audit_data.get('scan_truncated', False)})",
         f"- **Total Routes**: {audit_data.get('total_routes', 0)}",
         f"- **Total Client Calls**: {audit_data.get('total_client_calls', 0)}",
-        f"- **Ghost Feature Candidates**: {len(audit_data.get('ghost_features', []))}",
-        f"- **Empty / Unfinished Candidates**: {len(audit_data.get('empty_or_unfinished', []))}",
-        f"- **Missing Route Candidates**: {len(audit_data.get('missing_route_candidates', []))}",
-        f"- **Method Mismatches**: {len(audit_data.get('method_mismatches', []))}",
-        f"- **Uncovered Routes**: {len(audit_data.get('uncovered_routes', []))}",
+        f"- **Ghost Feature Candidates (Primary App)**: {len(audit_data.get('primary_application_findings', {}).get('ghost_features', audit_data.get('ghost_features', [])))}",
+        f"- **Empty / Unfinished Candidates (Primary App)**: {len(audit_data.get('primary_application_findings', {}).get('empty_or_unfinished', audit_data.get('empty_or_unfinished', [])))}",
+        f"- **Missing Route Candidates (Primary App)**: {len(audit_data.get('primary_application_findings', {}).get('missing_route_candidates', audit_data.get('missing_route_candidates', [])))}",
+        f"- **Method Mismatches (Primary App)**: {len(audit_data.get('primary_application_findings', {}).get('method_mismatches', audit_data.get('method_mismatches', [])))}",
+        f"- **Uncovered Routes (Primary App)**: {len(audit_data.get('primary_application_findings', {}).get('uncovered_routes', audit_data.get('uncovered_routes', [])))}",
         f"- **Structural Duplicate Blocks**: {len(audit_data.get('duplicate_logic', []))} ({audit_data.get('code_waste_estimate', {}).get('duplicate_lines', 0)} lines)",
         "",
-        "## Capability Matrix",
-        "| Language / Framework | Status | Capability | Limitations |",
-        "| --- | --- | --- | --- |",
+        "## Application Boundaries",
     ]
+    boundaries = audit_data.get("application_boundaries", [])
+    if boundaries:
+        for b in boundaries:
+            lines.append(f"- **{b['app_name']}** (`{b['relative_path']}`): {', '.join(b.get('manifests', []))}")
+    else:
+        lines.append("- Single application root.")
+
+    lines.append("")
+    lines.append("## Source-Role Inventory")
+    role_inv = audit_data.get("source_role_inventory", {})
+    if role_inv:
+        lines.append("| Source Role | File Count | Scope Category |")
+        lines.append("| --- | --- | --- |")
+        for role, count in sorted(role_inv.items()):
+            if count > 0:
+                scope = "Primary Application" if role == "application_source" else ("Examples & Demos" if role in ("example", "demo", "benchmark") else ("Tests & Fixtures" if role in ("test", "fixture") else "Tooling & Docs"))
+                lines.append(f"| `{role}` | {count} | {scope} |")
+
+    lines.append("")
+    lines.append("## Capability Matrix")
+    lines.append("| Language / Framework | Status | Capability | Limitations |")
+    lines.append("| --- | --- | --- | --- |")
     for cap in audit_data.get("capability_matrix", []):
         lines.append(f"| {cap['language_framework']} | {cap['status']} | {cap['analysis_capability']} | {cap['limitations']} |")
 
+    # Inventory-only manifests
+    dep_audit = audit_data.get("dependency_hygiene", {})
+    inv_only = dep_audit.get("inventory_only_manifests", [])
+    if inv_only:
+        lines.append("")
+        lines.append("## Inventory-Only Manifests (Unsupported Dependency Ecosystems)")
+        for inv in inv_only:
+            lines.append(f"- **{inv['manifest']}** ({inv['ecosystem']}): {inv['explanation']}")
+
     lines.append("")
-    lines.append("## Ghost Feature Candidates")
-    gf_list = audit_data.get("ghost_features", [])
-    if gf_list:
-        for gf in gf_list:
+    lines.append("## Primary Application Findings")
+    primary_gf = audit_data.get("primary_application_findings", {}).get("ghost_features", audit_data.get("ghost_features", []))
+    if primary_gf:
+        for gf in primary_gf:
             lines.append(f"### {gf.get('id', 'Ghost')}: {gf.get('chain_stage', '')}")
             lines.append(f"- **Explanation**: {gf.get('explanation', '')}")
-            lines.append(f"- **Location**: `{gf.get('source', '')}:{gf.get('line', '')}`")
+            lines.append(f"- **Location**: `{gf.get('source', '')}:{gf.get('line', '')}` ({gf.get('app_name', 'primary')})")
             lines.append(f"- **Confidence**: {gf.get('confidence', '')}")
             lines.append(f"- **Impact**: {gf.get('potential_impact', '')}")
             lines.append(f"- **Recommended Action**: {gf.get('recommended_action', '')}")
             lines.append("")
     else:
-        lines.append("No ghost features detected.")
+        lines.append("No ghost features detected in primary application code.")
         lines.append("")
+
+    # Example findings (isolated)
+    example_gf = audit_data.get("example_findings", {}).get("ghost_features", [])
+    if example_gf:
+        lines.append("## Example and Demo Findings (Isolated)")
+        lines.append("> [!NOTE] These findings originate in example/demo applications and do not affect production code.")
+        lines.append("")
+        for gf in example_gf:
+            lines.append(f"### {gf.get('id', 'Example-Ghost')}: {gf.get('chain_stage', '')}")
+            lines.append(f"- **Explanation**: {gf.get('explanation', '')}")
+            lines.append(f"- **Location**: `{gf.get('source', '')}:{gf.get('line', '')}` (Example: {gf.get('app_name', 'example')})")
+            lines.append(f"- **Confidence**: {gf.get('confidence', '')}")
+            lines.append("")
 
     return "\n".join(lines) + "\n"
 
@@ -175,25 +217,90 @@ def discover(
     root = project_root.resolve()
     try:
         config = load_config(root)
-        result = discover_project(root)
         from ghost_hunter.discovery.languages.registry import LanguageRegistry
+        from ghost_hunter.discovery.project import detect_project_context
+
         registry = LanguageRegistry()
         scan_data = registry.scan_repository(root)
-        result["multi_language"] = {
-            "detected_languages": scan_data.get("detected_languages", []),
-            "frameworks": [f["framework"] for f in scan_data.get("frameworks", [])],
+        context = detect_project_context(root)
+        flask_result = discover_project(root)
+
+        # Primary multi-language discovery result
+        result = {
+            "schema_version": "2.0",
+            "project_name": context.get("project_name", "unknown"),
+            "languages": scan_data.get("detected_languages", []),
+            "frameworks": scan_data.get("frameworks", []),
+            "application_boundaries": scan_data.get("application_boundaries", []),
+            "source_role_inventory": scan_data.get("source_role_inventory", {}),
             "capability_matrix": scan_data.get("capability_matrix", []),
+            "routes": [
+                {
+                    "path": r.path,
+                    "methods": r.methods,
+                    "source": r.source,
+                    "line": r.line,
+                    "framework": r.framework,
+                    "app_name": r.app_name,
+                    "source_role": r.source_role,
+                }
+                for r in scan_data.get("routes", [])
+            ],
+            "models": [
+                {
+                    "name": m.name,
+                    "source": m.source,
+                    "line": m.line,
+                    "framework": m.framework,
+                    "app_name": m.app_name,
+                }
+                for m in scan_data.get("models", [])
+            ],
+            "client_calls": [
+                {
+                    "path": c.path,
+                    "method": c.method,
+                    "source": c.source,
+                    "line": c.line,
+                    "framework": c.framework,
+                    "app_name": c.app_name,
+                    "call_type": c.call_type,
+                }
+                for c in scan_data.get("client_calls", [])
+            ],
+            "components": [
+                {
+                    "name": comp.name,
+                    "source": comp.source,
+                    "line": comp.line,
+                    "framework": comp.framework,
+                    "app_name": comp.app_name,
+                }
+                for comp in scan_data.get("components", [])
+            ],
+            # Legacy Flask discovery retained for backwards compatibility
+            "flask_compatibility": flask_result,
+            "framework_support": flask_result.get("framework_support", "generic"),
+            "tests": flask_result.get("tests", []),
+            "frontend_files": flask_result.get("frontend_files", []),
+            "multi_language": {
+                "detected_languages": scan_data.get("detected_languages", []),
+                "frameworks": [f["framework"] for f in scan_data.get("frameworks", [])],
+                "capability_matrix": scan_data.get("capability_matrix", []),
+            },
         }
         json_path, markdown_path = write_discovery(result, _safe_report_dir(root, config.report_dir), force=force)
     except (ValueError, OSError, FileExistsError) as exc:
         raise typer.BadParameter(str(exc)) from exc
+
     typer.echo(
-        f"Framework: {result['framework_support']}; routes: {len(result['routes'])}; "
-        f"models: {len(result['models'])}; tests: {len(result['tests'])}; "
-        f"frontend files: {len(result['frontend_files'])}"
+        f"Languages: {', '.join(scan_data.get('detected_languages', [])) or 'None'}; "
+        f"routes: {len(result['routes'])}; "
+        f"models: {len(result['models'])}; "
+        f"applications: {len(result['application_boundaries'])}"
     )
-    if scan_data.get("detected_languages"):
-        typer.echo(f"Languages: {', '.join(scan_data['detected_languages'])}")
+    if flask_result.get("framework_support") != "generic":
+        typer.echo(f"Flask compatibility view: {len(flask_result.get('routes', []))} routes")
     typer.echo(f"JSON: {json_path}\nMarkdown: {markdown_path}")
 
 
@@ -210,13 +317,13 @@ def audit_routes(
     typer.echo(f"Frontend calls inspected: {result['total_frontend_calls_inspected']}")
     typer.echo(f"Missing route candidates: {len(result['missing_route_candidates'])}")
     typer.echo(f"Potentially unused endpoints: {len(result['potentially_unused_endpoints'])}")
-    typer.echo(f"Uncovered routes (no tests): {len(result['uncovered_routes'])}")
+    typer.echo(f"Uncovered routes: {len(result['uncovered_routes'])}")
     for candidate in result["missing_route_candidates"]:
         typer.echo(f"  [MISSING] {candidate['endpoint']} (called from {candidate['source']}:{candidate['line']})")
     for unused in result["potentially_unused_endpoints"]:
         typer.echo(f"  [UNUSED CANDIDATE] {unused['endpoint']} ({unused['source']}:{unused['line']})")
     for uncovered in result["uncovered_routes"]:
-        typer.echo(f"  [UNCOVERED] {uncovered['endpoint']} ({uncovered['source']}:{uncovered['line']})")
+        typer.echo(f"  [{uncovered.get('coverage_status', 'UNCOVERED')}] {uncovered['endpoint']} ({uncovered['source']}:{uncovered['line']})")
 
 
 @app.command(name="audit-repo")
@@ -224,6 +331,7 @@ def audit_repo(
     project_root: Path = typer.Option(Path.cwd(), "--project-root", "-p", help="Project root to audit."),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Report destination file (.json or .md)."),
     json_output: bool = typer.Option(False, "--json", help="Output JSON format instead of human-readable text."),
+    include_examples: bool = typer.Option(False, "--include-examples", help="Include example and demo findings in primary audit output."),
     force: bool = typer.Option(False, "--force", help="Replace existing report file at destination."),
     allow_external_output: bool = typer.Option(
         False, "--allow-external-output", help="Permit writing report outside the project root."
@@ -233,7 +341,7 @@ def audit_repo(
     root = project_root.resolve()
     from ghost_hunter.discovery.audit import audit_repository
 
-    result = audit_repository(root)
+    result = audit_repository(root, include_examples=include_examples)
 
     if output is not None:
         destination = output if output.is_absolute() else (root / output)
@@ -260,31 +368,50 @@ def audit_repo(
         return
 
     typer.echo(f"Project: {result['project_context']['project_name']}")
+    boundaries = result.get("application_boundaries", [])
+    if boundaries:
+        typer.echo(f"Application Boundaries ({len(boundaries)}):")
+        for b in boundaries:
+            typer.echo(f"  - {b['app_name']} ({b['relative_path']}): {', '.join(b.get('manifests', []))}")
+
     typer.echo("Language / Framework Capabilities:")
     for cap in result["capability_matrix"]:
         typer.echo(f"  - {cap['language_framework']}: {cap['status']} ({cap['analysis_capability']})")
 
-    typer.echo(f"\nGhost Feature Candidates: {len(result['ghost_features'])}")
-    for gf in result["ghost_features"]:
-        typer.echo(f"  [{gf['chain_stage']}] {gf['explanation']} ({gf['source']}:{gf['line']})")
+    primary_findings = result.get("primary_application_findings", {})
+    typer.echo(f"\n[Primary Application Findings]")
+    typer.echo(f"  Ghost Feature Candidates: {len(primary_findings.get('ghost_features', []))}")
+    for gf in primary_findings.get("ghost_features", []):
+        typer.echo(f"    [{gf['chain_stage']}] {gf['explanation']} ({gf['source']}:{gf['line']})")
 
-    typer.echo(f"\nEmpty / Unfinished Candidates: {len(result['empty_or_unfinished'])}")
-    for item in result["empty_or_unfinished"]:
-        typer.echo(f"  [{item['item_type']}] {item['name']} ({item['source']}:{item['line']})")
+    typer.echo(f"  Empty / Unfinished Candidates: {len(primary_findings.get('empty_or_unfinished', []))}")
+    for item in primary_findings.get("empty_or_unfinished", []):
+        typer.echo(f"    [{item['item_type']}] {item['name']} ({item['source']}:{item['line']})")
 
-    typer.echo(f"\nMissing Route Candidates: {len(result['missing_route_candidates'])}")
-    for candidate in result["missing_route_candidates"]:
-        typer.echo(f"  [MISSING] {candidate['method']} {candidate['endpoint']} ({candidate['source']}:{candidate['line']})")
+    typer.echo(f"  Missing Route Candidates: {len(primary_findings.get('missing_route_candidates', []))}")
+    for candidate in primary_findings.get("missing_route_candidates", []):
+        typer.echo(f"    [MISSING] {candidate['method']} {candidate['endpoint']} ({candidate['source']}:{candidate['line']})")
 
-    typer.echo(f"\nMethod Mismatches: {len(result['method_mismatches'])}")
-    for mm in result["method_mismatches"]:
-        typer.echo(f"  [MISMATCH] Client calls {mm['client_method']} {mm['endpoint']} (Allowed: {mm['allowed_methods']})")
+    typer.echo(f"  Method Mismatches: {len(primary_findings.get('method_mismatches', []))}")
+    for mm in primary_findings.get("method_mismatches", []):
+        typer.echo(f"    [MISMATCH] Client calls {mm['client_method']} {mm['endpoint']} (Allowed: {mm['allowed_methods']})")
 
-    typer.echo(f"\nPotentially Unused Endpoints: {len(result['potentially_unused_endpoints'])}")
-    for unused in result["potentially_unused_endpoints"]:
-        typer.echo(f"  [UNUSED] {unused['endpoint']} ({unused['source']}:{unused['line']})")
+    typer.echo(f"  Potentially Unused Endpoints: {len(primary_findings.get('potentially_unused_endpoints', []))}")
+    for unused in primary_findings.get("potentially_unused_endpoints", []):
+        typer.echo(f"    [UNUSED] {unused['endpoint']} ({unused['source']}:{unused['line']})")
 
-    typer.echo(f"\nStructural Duplicate Code: {len(result['duplicate_logic'])} blocks ({result['code_waste_estimate']['duplicate_lines']} waste lines)")
+    typer.echo(f"  Structural Duplicate Code: {len(primary_findings.get('duplicate_logic', []))} blocks ({result['code_waste_estimate']['duplicate_lines']} waste lines)")
+
+    example_findings = result.get("example_findings", {})
+    ex_ghost_count = len(example_findings.get("ghost_features", []))
+    ex_empty_count = len(example_findings.get("empty_or_unfinished", []))
+    if ex_ghost_count or ex_empty_count:
+        typer.echo(f"\n[Example & Demo Findings (Isolated - {ex_ghost_count} ghost, {ex_empty_count} empty)]")
+        if include_examples:
+            for gf in example_findings.get("ghost_features", []):
+                typer.echo(f"    [EXAMPLE GHOST: {gf['chain_stage']}] {gf['explanation']} ({gf['source']}:{gf['line']})")
+        else:
+            typer.echo("    (Pass --include-examples to view detailed findings for example directories)")
 
 
 
