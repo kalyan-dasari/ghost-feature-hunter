@@ -86,7 +86,7 @@ def classify_source_role(rel_path: Path | str, root: Path | None = None) -> str:
             "_mock.py", "-mock.py", ".mock.js", ".mock.jsx", ".mock.ts", ".mock.tsx", "_fixture.py", "-fixture.py",
             "_mock.go", "-mock.go", "_mock.php", "_fixture.php", "_mock.rb", "_fixture.rb", "_mock.rs",
         ))
-        or bool(re.search(r"(?:[A-Za-z0-9_]+(?:Mock|Mocks|Fixture|Fixtures)|[._-](?:mock|mocks|fixture|fixtures))\.(?:java|cs|kt|kts|php|rb|rs|go|py|js|ts)$", orig_name))
+        or bool(re.search(r"(?:[A-Za-z0-9_]*(?:Mock|Mocks|Fixture|Fixtures)|[._-](?:mock|mocks|fixture|fixtures))\.(?:java|cs|kt|kts|php|rb|rs|go|py|js|ts)$", orig_name))
     ):
         return "fixture"
 
@@ -116,7 +116,7 @@ def classify_source_role(rel_path: Path | str, root: Path | None = None) -> str:
             "_test.rs",
         ))
         or name_lower in ("test.rs", "tests.rs")
-        or bool(re.search(r"(?:[A-Za-z0-9_]+(?:Test|Tests|TestCase|Spec|Specs)|[._-](?:test|tests|testcase|spec|specs))\.(?:java|cs|kt|kts|php|rb|rs)$", orig_name))
+        or bool(re.search(r"(?:[A-Za-z0-9_]*(?:Test|Tests|TestCase|Spec|Specs)|[._-](?:test|tests|testcase|spec|specs))\.(?:java|cs|kt|kts|php|rb|rs)$", orig_name))
     ):
         return "test"
 
