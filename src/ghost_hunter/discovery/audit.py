@@ -335,8 +335,15 @@ def _inspect_js_test_blocks(
             re.search(rf"""(?:fetch|axios(?:\.[a-z]+)?|request\([^)]*\)\.[a-z]+|\$\.ajax)\s*\(\s*['"][^'"]*{path_regex}""", block)
         )
         block_has_assert = bool(
-            re.search(r"""(?:expect\s*\(|\.toBe\(|\.toEqual\(|assert\.)""", block)
-            and re.search(r"""\b(?:res|response|status|body|data)\b""", block)
+            re.search(
+                r"""(?:"""
+                r"""expect\s*\([^)]*\b(?:res|response|status|body|data)\b[^)]*\)\.(?:toBe|toEqual|toMatch|toHaveProperty|toContain|toBeDefined|not)|"""
+                r"""assert\.\w+\([^)]*\b(?:res|response|status|body|data)\b|"""
+                r"""\.expect\s*\(\s*(?:200|201|400|401|403|404|500|['"][^'"]*['"])\)|"""
+                r"""expect\s*\([^)]*\)\.(?:status|statusCode|body)\b"""
+                r""")""",
+                block,
+            )
         )
         if block_has_call and block_has_assert:
             has_assertion_candidate = True
@@ -489,13 +496,21 @@ def _inspect_polyglot_test_blocks(
 
     response_assert_pattern = re.compile(
         r"""(?:"""
-        r"""\b(?:w\.Code|res\.Code|resp\.Code|res\.StatusCode|resp\.StatusCode|response\.StatusCode)\b|"""
-        r"""\b(?:res\.status|resp\.status|response\.status|response\.status_code|response\.getStatusCode)\b|"""
-        r"""\b(?:assertStatus|assertOk|assert_response|isOk|isCreated|isNotFound|isBadRequest|have_http_status)\b|"""
-        r"""(?:assertEquals|assert_eq!|Assert\.Equal|assert\.)\s*\(\s*(?:200|201|400|401|403|404|500|HttpStatus\.[A-Z_]+)\b|"""
+        # 1. Comparison operations on status / code: e.g. w.Code == 200, res.StatusCode != 404, w.Code != http.StatusOK
+        r"""(?:w\.Code|res\.Code|resp\.Code|res\.StatusCode|resp\.StatusCode|response\.StatusCode|res\.status|resp\.status|response\.status|response\.status_code|response\.getStatusCode\(\))\s*(?:==|!=|<|>|<=|>=)\s*(?:[0-9]{3}|http\.[A-Z0-9_]+|HttpStatus\.[A-Z0-9_]+|HttpStatusCode\.[A-Z0-9_]+)\b|"""
+        # 2. Go/C conditional error/failure check: if w.Code != 200 { t.Errorf(...) }
+        r"""if\s+[^;{]*?(?:w\.Code|res\.StatusCode|resp\.StatusCode|response\.StatusCode|res\.status)\s*(?:!=|==)[^;{]*?\{[\s\S]*?(?:t\.Error|t\.Fatal|panic|fail|Fail)|"""
+        # 3. Assert / Require framework calls with status/code/body/response:
+        # e.g. Assert.Equal(200, (int)response.StatusCode), assertEquals(200, res.getStatusCode().value()), assert_eq!(res.status(), 200)
+        r"""(?:assertEquals|assert_eq!|assert_ne!|assert!|Assert\.(?:Equal|NotEqual|True|False|NotNull|Contains)|assert\.(?:Equal|NotEmpty|Nil|NotNil|Contains)|require\.(?:Equal|NoError|True|False))\s*\([^;]*?(?:w\.Code|res|resp|response|status|StatusCode|HttpStatus|200|201|400|401|403|404|500)\b|"""
+        # 4. Fluent and specialized framework assertions:
+        # e.g. andExpect(status().isOk()), assertThat(res.status()).isEqualTo(200), expect(res.body).to...
         r"""andExpect\s*\(\s*(?:status\(\)|content\(\)|jsonPath)|"""
-        r"""\b(?:w\.Body|res\.Body|resp\.Body|response\.Body|res\.body|resp\.body|response\.body|response\.data|response\.json)\b|"""
-        r"""\b(?:contentAsString|jsonPath|assertJson|assertSee|assert_select)\b"""
+        r"""(?:assertStatus|assertOk|assertNotFound|assertCreated|assert_response|have_http_status|assertJson|assertSee|assert_select)\s*\(|"""
+        r"""assertThat\s*\([^;]*?(?:res|resp|response|w\.Code|status)\b|"""
+        r"""expect\s*\([^;]*?(?:res|resp|response|w\.Code|status)\b[^;]*?\)\.to|"""
+        # 5. Helper verification calls on response:
+        r"""(?:check_status|checkStatus|verify_response|verifyResponse|assert_successful|assertSuccessful)\s*\([^)]*?(?:res|resp|response|w)\b"""
         r""")"""
     )
 

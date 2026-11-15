@@ -7,6 +7,7 @@ error handling risks, data loss risks, security leaks, and test gaps.
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 import subprocess
