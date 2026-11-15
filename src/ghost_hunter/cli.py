@@ -519,5 +519,60 @@ def review(
         typer.echo(report_md)
 
 
+@app.command(name="map")
+def connection_map_cmd(
+    feature: Optional[str] = typer.Argument(None, help="Optional feature name or route path to trace."),
+    project_root: Path = typer.Option(Path.cwd(), "--project-root", "-p", help="Project root to map."),
+    json_output: bool = typer.Option(False, "--json", help="Output map as structured JSON."),
+    mermaid: bool = typer.Option(False, "--mermaid", help="Output Mermaid diagram syntax."),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="File to write map output to."),
+) -> None:
+    """Generate an 8-layer Feature Connection Map with cross-layer contract verification."""
+    from ghost_hunter.discovery.connection_map import generate_feature_connection_map
+
+    result = generate_feature_connection_map(project_root.resolve(), target_feature=feature)
+    if json_output:
+        formatted = json.dumps(result, indent=2)
+        if output:
+            output.write_text(formatted, encoding="utf-8")
+        else:
+            typer.echo(formatted)
+        return
+
+    if mermaid:
+        m_diagram = result.get("mermaid", "")
+        if output:
+            output.write_text(m_diagram, encoding="utf-8")
+        else:
+            typer.echo(m_diagram)
+        return
+
+    ascii_map = result.get("ascii_diagram", "")
+    summary = [
+        f"Feature Connection Map for '{project_root.resolve().name}':",
+        f"- Nodes: {result['nodes_count']}",
+        f"- Edges: {result['edges_count']}",
+        f"- Broken Edges: {result['broken_edges_count']}",
+        f"- Missing Edges: {result['missing_edges_count']}",
+        f"- Orphaned Nodes: {result['orphaned_nodes_count']}",
+        f"- Contract Findings: {result['contract_findings_count']}",
+        "",
+        ascii_map,
+    ]
+    if result.get("contract_findings"):
+        summary.extend(["", "Cross-Layer Contract Findings:"])
+        for cf in result["contract_findings"]:
+            summary.append(f"  [{cf['severity']}] {cf['category']}: {cf['message']}")
+            summary.append(f"    Evidence: {cf['evidence']}")
+            summary.append(f"    Fix: {cf['recommended_fix']}")
+
+    text_out = "\n".join(summary)
+    if output:
+        output.write_text(text_out, encoding="utf-8")
+        typer.echo(f"Map written to: {output}")
+    else:
+        typer.echo(text_out)
+
+
 if __name__ == "__main__":
     app()
