@@ -108,11 +108,15 @@ class LanguageRegistry:
             adapter = self._language_to_adapter.get(fw.get("language", ""))
             caps = adapter.get_capabilities() if adapter else {}
             level = getattr(adapter, "capability_level", "structural")
+            declared_level = fw.get("capability_level", level)
+            # Enforce honesty: parser-backed deep-static requires genuine syntax_parsing
+            if not caps.get("syntax_parsing", False) and declared_level == "deep-static":
+                declared_level = "structural"
             entry = {
                 "language_framework": f"{fw['language']} / {fw['framework']}",
                 "detected": True,
                 "status": fw.get("status", "supported"),
-                "capability_level": fw.get("capability_level", level),
+                "capability_level": declared_level,
                 "analysis_capability": fw.get("analysis_capability", f"Supported analysis for {fw['language']} ({fw['framework']})"),
                 "capabilities": fw.get("capabilities", caps),
                 "limitations": fw.get("limitations", "None specified"),
@@ -130,13 +134,16 @@ class LanguageRegistry:
             if adapter is not None:
                 # Always add base entry for Go (to satisfy existing capability queries), or when no framework is detected
                 if lang == "Go" or not has_fw:
+                    caps = adapter.get_capabilities()
                     level = adapter.capability_level
+                    if not caps.get("syntax_parsing", False) and level == "deep-static":
+                        level = "structural"
                     status = "supported" if level == "deep-static" else ("partial" if level == "structural" else "inventory-only")
                     analysis_cap = (
                         "Deep static AST analysis and symbol resolution"
                         if level == "deep-static"
                         else (
-                            "Structural AST analysis with file inventory and package manifest inspection"
+                            "Structural regex and lexical analysis with file inventory and package manifest inspection"
                             if level == "structural"
                             else "File inventory and package manifest inspection only"
                         )
@@ -156,7 +163,7 @@ class LanguageRegistry:
                         "status": status,
                         "capability_level": level,
                         "analysis_capability": analysis_cap,
-                        "capabilities": adapter.get_capabilities(),
+                        "capabilities": caps,
                         "limitations": lims,
                     })
             else:
