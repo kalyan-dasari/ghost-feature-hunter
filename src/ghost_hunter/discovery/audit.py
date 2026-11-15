@@ -350,6 +350,91 @@ def _inspect_js_test_blocks(
     return (has_assertion_candidate, has_reference_candidate, has_code_mention)
 
 
+def _extract_brace_block(content: str, open_brace_idx: int) -> str | None:
+    """Extract block bounded by matching braces starting at open_brace_idx."""
+    depth = 0
+    in_str = None
+    i = open_brace_idx
+    length = len(content)
+    while i < length:
+        ch = content[i]
+        if in_str:
+            if ch == in_str:
+                escape_count = 0
+                k = i - 1
+                while k >= open_brace_idx and content[k] == "\\":
+                    escape_count += 1
+                    k -= 1
+                if escape_count % 2 == 0:
+                    in_str = None
+        else:
+            if ch in ('"', "'", "`"):
+                in_str = ch
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return content[open_brace_idx : i + 1]
+        i += 1
+    return None
+
+
+def _extract_polyglot_test_blocks(stripped: str, file_path: str) -> list[str]:
+    """Extract individual test function bodies from polyglot test files with nested brace support."""
+    blocks: list[str] = []
+
+    if file_path.endswith(".go"):
+        for m in re.finditer(r"""\bfunc\s+Test[a-zA-Z0-9_]*\s*\([^)]*\)\s*\{""", stripped):
+            blk = _extract_brace_block(stripped, m.end() - 1)
+            if blk:
+                blocks.append(blk)
+
+    elif file_path.endswith(".java") or file_path.endswith((".kt", ".kts")):
+        for m in re.finditer(r"""@Test[\s\S]*?(?:public\s+|private\s+|protected\s+)?(?:void|fun|[a-zA-Z0-9_<>]+)\s+[a-zA-Z0-9_`]+\s*\([^)]*\)[\s\S]*?\{""", stripped):
+            blk = _extract_brace_block(stripped, m.end() - 1)
+            if blk:
+                blocks.append(blk)
+
+    elif file_path.endswith(".cs"):
+        for m in re.finditer(r"""\[(?:Fact|Theory|Test|TestMethod)\][\s\S]*?(?:public\s+|private\s+|protected\s+)?(?:async\s+)?(?:void|Task|Task<[a-zA-Z0-9_]+>)\s+[a-zA-Z0-9_]+\s*\([^)]*\)[\s\S]*?\{""", stripped):
+            blk = _extract_brace_block(stripped, m.end() - 1)
+            if blk:
+                blocks.append(blk)
+
+    elif file_path.endswith(".php"):
+        for m in re.finditer(r"""(?:public\s+)?function\s+test[a-zA-Z0-9_]*\s*\([^)]*\)[\s\S]*?\{""", stripped):
+            blk = _extract_brace_block(stripped, m.end() - 1)
+            if blk:
+                blocks.append(blk)
+        for m in re.finditer(r"""\b(?:it|test)\s*\(\s*['"][^'"]+['"]\s*,\s*function\s*\([^)]*\)[\s\S]*?\{""", stripped):
+            blk = _extract_brace_block(stripped, m.end() - 1)
+            if blk:
+                blocks.append(blk)
+
+    elif file_path.endswith(".rs"):
+        for m in re.finditer(r"""#\[(?:[a-zA-Z0-9_:]+::)?test\][\s\S]*?(?:pub\s+)?(?:async\s+)?fn\s+[a-zA-Z0-9_]+\s*\([^)]*\)[\s\S]*?\{""", stripped):
+            blk = _extract_brace_block(stripped, m.end() - 1)
+            if blk:
+                blocks.append(blk)
+
+    elif file_path.endswith(".rb"):
+        for m in re.finditer(r"""\b(?:it|test|specify)\s+['"][^'"]*['"]\s+do\b""", stripped):
+            start_idx = m.start()
+            do_idx = m.end()
+            depth = 1
+            for t in re.finditer(r"""\b(do|def|class|module|begin|case|if|unless)\b|\b(end)\b""", stripped[do_idx:]):
+                if t.group(1):
+                    depth += 1
+                elif t.group(2):
+                    depth -= 1
+                    if depth == 0:
+                        blocks.append(stripped[start_idx : do_idx + t.end()])
+                        break
+
+    return blocks
+
+
 def _inspect_polyglot_test_blocks(
     content: str,
     route_path: str,
@@ -359,7 +444,7 @@ def _inspect_polyglot_test_blocks(
     clean_path = route_path.strip("/")
     path_regex = re.escape(clean_path)
 
-    # Strip line and block comments
+    # Strip line and block comments so comments containing paths are ignored
     stripped = re.sub(r"//.*$", "", content, flags=re.MULTILINE)
     stripped = re.sub(r"/\*[\s\S]*?\*/", "", stripped)
     stripped = re.sub(r"#.*$", "", stripped, flags=re.MULTILINE)
@@ -368,38 +453,63 @@ def _inspect_polyglot_test_blocks(
     has_assertion_candidate = False
     has_reference_candidate = False
 
-    # Extract test blocks across language conventions
-    blocks: list[str] = []
-    if file_path.endswith(".go"):
-        blocks = re.findall(r"""func\s+Test[a-zA-Z0-9_]*\s*\(t\s+\*testing\.T\)\s*\{([\s\S]*?)\n\}""", stripped)
-    elif file_path.endswith(".java") or file_path.endswith((".kt", ".kts")):
-        blocks = re.findall(r"""@Test[\s\S]*?(?:public\s+)?(?:void|fun)\s+[a-zA-Z0-9_`]+\s*\([^)]*\)\s*\{([\s\S]*?)\n\s*\}""", stripped)
-    elif file_path.endswith(".cs"):
-        blocks = re.findall(r"""\[(?:Fact|Theory|Test|TestMethod)\][\s\S]*?(?:public\s+)?(?:async\s+)?(?:void|Task)\s+[a-zA-Z0-9_]+\s*\([^)]*\)\s*\{([\s\S]*?)\n\s*\}""", stripped)
-    elif file_path.endswith(".php"):
-        blocks = re.findall(r"""(?:public\s+)?function\s+test[a-zA-Z0-9_]*\s*\([^)]*\)\s*\{([\s\S]*?)\n\s*\}""", stripped)
-        blocks.extend(re.findall(r"""(?:it|test)\s*\(\s*['"][^'"]*['"]\s*,\s*function\s*\(\)\s*\{([\s\S]*?)\n\s*\}\s*\)""", stripped))
-    elif file_path.endswith(".rb"):
-        blocks = re.findall(r"""(?:it|test)\s+['"][^'"]*['"]\s+do([\s\S]*?)\n\s*end""", stripped)
-    elif file_path.endswith(".rs"):
-        blocks = re.findall(r"""#\[(?:tokio::)?test\][\s\S]*?(?:pub\s+)?(?:async\s+)?fn\s+[a-zA-Z0-9_]+\s*\([^)]*\)\s*\{([\s\S]*?)\n\s*\}""", stripped)
+    # Extract test blocks across language conventions (with nested brace support, no whole-file fallback)
+    blocks = _extract_polyglot_test_blocks(stripped, file_path)
 
-    if not blocks:
-        # Fallback: check whole file content if no specific function blocks matched
-        blocks = [stripped]
+    request_pattern = re.compile(
+        rf"""(?:"""
+        # Go request callers
+        rf"""httptest\.NewRequest\s*\([^,]+,\s*['"][^'"]*{path_regex}['"]|"""
+        rf"""http\.NewRequest(?:WithContext)?\s*\([^,]+,\s*['"][^'"]*{path_regex}['"]|"""
+        rf"""(?:client|c|router|app|ts|server|e)\.(?:Get|Post|Put|Delete|Patch|Head|Options|Do|ServeHTTP)\s*\([^)]*['"][^'"]*{path_regex}['"]|"""
+        # Java/Kotlin callers
+        rf"""mockMvc\.perform\s*\(\s*(?:get|post|put|delete|patch|head|options)\s*\(\s*['"][^'"]*{path_regex}['"]|"""
+        rf"""webTestClient\.(?:get|post|put|delete)\s*\(\)\s*\.uri\s*\(\s*['"][^'"]*{path_regex}['"]|"""
+        rf"""testRestTemplate\.(?:getForEntity|postForEntity|exchange|getForObject|postForObject)\s*\(\s*['"][^'"]*{path_regex}['"]|"""
+        rf"""(?:client|restTemplate|webClient|httpClient)\.(?:get|post|put|delete|exchange|target)\s*\([^)]*['"][^'"]*{path_regex}['"]|"""
+        rf"""RestAssured\.(?:given\(\)\.)?(?:when\(\)\.)?(?:get|post|put|delete)\s*\(\s*['"][^'"]*{path_regex}['"]|"""
+        # C# callers
+        rf"""(?:client|httpClient|_client|_httpClient)\.(?:GetAsync|PostAsync|PutAsync|DeleteAsync|PatchAsync|SendAsync|GetFromJsonAsync|PostAsJsonAsync)\s*\(\s*['"][^'"]*{path_regex}['"]|"""
+        rf"""server\.CreateClient\(\)\.(?:GetAsync|PostAsync|PutAsync|DeleteAsync)\s*\(\s*['"][^'"]*{path_regex}['"]|"""
+        # PHP callers
+        rf"""\$this->(?:get|post|put|delete|patch|json|getJson|postJson|call)\s*\(\s*['"][^'"]*{path_regex}['"]|"""
+        rf"""\$client->request\s*\([^,]+,\s*['"][^'"]*{path_regex}['"]|"""
+        # Ruby callers
+        rf"""\b(?:get|post|put|delete|patch|head)\s+['"][^'"]*{path_regex}['"]|"""
+        rf"""\b(?:get|post|put|delete|patch|head)\s*\(\s*['"][^'"]*{path_regex}['"]|"""
+        # Rust callers
+        rf"""app\.oneshot\s*\([^)]*['"][^'"]*{path_regex}['"]|"""
+        rf"""(?:client|test)\.(?:get|post|put|delete)\s*\([^)]*['"][^'"]*{path_regex}['"]|"""
+        rf"""Request::(?:get|post|put|delete)\s*\(\s*['"][^'"]*{path_regex}['"]|"""
+        rf"""test::TestRequest::(?:get|post|put|delete|with_uri)\s*\(\s*['"][^'"]*{path_regex}['"]|"""
+        # Generic request invocation
+        rf"""(?:request|get|post|put|delete|patch|send|fetch|call|oneshot)\s*(?:\.|\(|\s)\s*[^;\n]*?['"][^'"]*{path_regex}['"]"""
+        rf""")"""
+    )
+
+    response_assert_pattern = re.compile(
+        r"""(?:"""
+        r"""\b(?:w\.Code|res\.Code|resp\.Code|res\.StatusCode|resp\.StatusCode|response\.StatusCode)\b|"""
+        r"""\b(?:res\.status|resp\.status|response\.status|response\.status_code|response\.getStatusCode)\b|"""
+        r"""\b(?:assertStatus|assertOk|assert_response|isOk|isCreated|isNotFound|isBadRequest|have_http_status)\b|"""
+        r"""(?:assertEquals|assert_eq!|Assert\.Equal|assert\.)\s*\(\s*(?:200|201|400|401|403|404|500|HttpStatus\.[A-Z_]+)\b|"""
+        r"""andExpect\s*\(\s*(?:status\(\)|content\(\)|jsonPath)|"""
+        r"""\b(?:w\.Body|res\.Body|resp\.Body|response\.Body|res\.body|resp\.body|response\.body|response\.data|response\.json)\b|"""
+        r"""\b(?:contentAsString|jsonPath|assertJson|assertSee|assert_select)\b"""
+        r""")"""
+    )
 
     for block in blocks:
-        block_has_call = bool(re.search(rf"""['"][^'"]*{path_regex}['"]""", block))
-        block_has_assert = bool(
-            re.search(
-                r"""(?:assert\.|require\.|t\.Error|t\.Fatal|assertEquals|assertTrue|assertThat|Assert\.|expect\(|assert_eq!|assert!)""",
-                block,
-            )
-        )
-        if block_has_call and block_has_assert:
+        block_has_request = bool(request_pattern.search(block))
+        block_has_path = bool(re.search(rf"""['"][^'"]*{path_regex}['"]""", block))
+        block_has_response_assert = bool(response_assert_pattern.search(block))
+
+        if block_has_request and block_has_response_assert:
             has_assertion_candidate = True
             break
-        elif block_has_call:
+        elif block_has_request:
+            has_reference_candidate = True
+        elif block_has_path:
             has_reference_candidate = True
 
     if not has_assertion_candidate and has_code_mention:
@@ -796,7 +906,28 @@ def audit_repository(project_root: Path, include_examples: bool = False) -> dict
             call.call_type = "external_service_call"
             continue
 
-        matching = [r for r in routes if match_route(endpoint, r.path)]
+        # Determine valid candidate routes based on caller scope to prevent cross-scope contamination
+        if call.scope == "primary_application" or call.source_role == "application_source":
+            # Production callers must NOT be satisfied by example, demo, benchmark, fixture, or test routes
+            valid_routes = [
+                r for r in routes
+                if r.source_role == "application_source" and r.scope == "primary_application"
+            ]
+        elif call.scope == "example":
+            # Example callers match within the same example app or against primary application routes
+            valid_routes = [
+                r for r in routes
+                if r.app_name == call.app_name or (r.source_role == "application_source" and r.scope == "primary_application")
+            ]
+        elif call.scope == "test_and_fixture":
+            valid_routes = routes
+        else:
+            valid_routes = [
+                r for r in routes
+                if r.source_role == "application_source"
+            ]
+
+        matching = [r for r in valid_routes if match_route(endpoint, r.path)]
         local_matching = [r for r in matching if r.app_name == call.app_name]
         cross_service_matching = [r for r in matching if r.app_name != call.app_name]
 

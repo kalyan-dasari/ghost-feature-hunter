@@ -6,6 +6,7 @@ Distinguishes primary application source from examples, demos, and fixtures.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -54,8 +55,9 @@ EXAMPLE_AND_FIXTURE_NAMES = {
 def classify_source_role(rel_path: Path | str, root: Path | None = None) -> str:
     """Classify any file into an explicit source role category."""
     path = Path(rel_path)
+    orig_name = path.name
     parts_lower = [p.lower() for p in path.parts]
-    name_lower = path.name.lower()
+    name_lower = orig_name.lower()
     suffix_lower = path.suffix.lower()
 
     # 1. Vendor
@@ -78,8 +80,13 @@ def classify_source_role(rel_path: Path | str, root: Path | None = None) -> str:
     # 4. Fixture (More specific than broad test directories - e.g. tests/fixtures/..., __tests__/__mocks__/...)
     if (
         any(p in {"fixture", "fixtures", "mock", "mocks", "testdata", "test_data", "__mocks__"} for p in parts_lower)
-        or name_lower.startswith(("mock_", "fixture_"))
-        or name_lower.endswith(("_mock.py", "-mock.py", ".mock.js", ".mock.jsx", ".mock.ts", ".mock.tsx", "_fixture.py", "-fixture.py"))
+        or name_lower.startswith(("mock_", "fixture_", "mock-", "fixture-"))
+        or bool(re.match(r"^(?:Mock|Fixture)[A-Z0-9_]", orig_name))
+        or name_lower.endswith((
+            "_mock.py", "-mock.py", ".mock.js", ".mock.jsx", ".mock.ts", ".mock.tsx", "_fixture.py", "-fixture.py",
+            "_mock.go", "-mock.go", "_mock.php", "_fixture.php", "_mock.rb", "_fixture.rb", "_mock.rs",
+        ))
+        or bool(re.search(r"(?:[A-Za-z0-9_]+(?:Mock|Mocks|Fixture|Fixtures)|[._-](?:mock|mocks|fixture|fixtures))\.(?:java|cs|kt|kts|php|rb|rs|go|py|js|ts)$", orig_name))
     ):
         return "fixture"
 
@@ -99,7 +106,17 @@ def classify_source_role(rel_path: Path | str, root: Path | None = None) -> str:
     if (
         any(p in {"tests", "test", "__tests__", "spec", "specs", "e2e"} for p in parts_lower)
         or name_lower.startswith(("test_", "test-"))
-        or name_lower.endswith(("_test.py", "-test.py", ".test.js", ".test.jsx", ".test.ts", ".test.tsx", ".spec.js", ".spec.jsx", ".spec.ts", ".spec.tsx"))
+        or name_lower.endswith((
+            "_test.py", "-test.py", ".test.js", ".test.jsx", ".test.ts", ".test.tsx",
+            ".spec.js", ".spec.jsx", ".spec.ts", ".spec.tsx",
+            "_test.js", "_test.ts", "_spec.js", "_spec.ts",
+            "_test.go",
+            "_spec.rb", "_test.rb", ".spec.rb",
+            "_test.php", ".spec.php",
+            "_test.rs",
+        ))
+        or name_lower in ("test.rs", "tests.rs")
+        or bool(re.search(r"(?:[A-Za-z0-9_]+(?:Test|Tests|TestCase|Spec|Specs)|[._-](?:test|tests|testcase|spec|specs))\.(?:java|cs|kt|kts|php|rb|rs)$", orig_name))
     ):
         return "test"
 
@@ -305,6 +322,9 @@ def detect_project_name(root: Path) -> str:
 
 
 def is_example_or_fixture(rel_path: Path | str) -> bool:
+    role = classify_source_role(rel_path)
+    if role in ("example", "demo", "benchmark", "fixture", "test"):
+        return True
     parts = Path(rel_path).parts
     return any(part.lower() in EXAMPLE_AND_FIXTURE_NAMES for part in parts)
 
