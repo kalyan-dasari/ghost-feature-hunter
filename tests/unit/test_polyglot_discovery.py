@@ -576,3 +576,217 @@ func TestOrderRoute(t *testing.T) {
     # Verify code review finds the issues
     review_res = run_code_review(tmp_path)
     assert review_res["findings_count"] >= 1
+
+
+# ==============================================================================
+# Polyglot Route Test Coverage Evidence Verification (8 Required Scenarios)
+# ==============================================================================
+
+def test_polyglot_route_coverage_scenario_1_path_string_only_without_request():
+    from ghost_hunter.discovery.audit import _evaluate_route_test_coverage, _inspect_polyglot_test_blocks
+    from ghost_hunter.discovery.languages.models import RouteDefinition
+
+    # Path string exists as a constant or log, but no HTTP request is invoked
+    go_content = """package main
+import "testing"
+func TestPathConst(t *testing.T) {
+    endpoint := "/api/v1/items"
+    t.Logf("Checking %s", endpoint)
+}
+"""
+    has_assert, has_ref, has_code = _inspect_polyglot_test_blocks(go_content, "/api/v1/items", "handler_test.go")
+    assert has_assert is False
+    assert has_code is True
+
+    route = RouteDefinition(path="/api/v1/items", methods=["GET"], handler="listItems", source="main.go", line=10)
+    cov_status = _evaluate_route_test_coverage(route, [("handler_test.go", go_content)])
+    assert cov_status == "test_reference_candidate"
+    assert cov_status != "test_verified"
+
+
+def test_polyglot_route_coverage_scenario_2_request_and_unrelated_assert():
+    from ghost_hunter.discovery.audit import _evaluate_route_test_coverage, _inspect_polyglot_test_blocks
+    from ghost_hunter.discovery.languages.models import RouteDefinition
+
+    # Route is invoked via HTTP, but assertion is unrelated to HTTP response (e.g. assert 1 == 1)
+    go_content = """package main
+import (
+    "net/http/httptest"
+    "testing"
+)
+func TestUnrelatedAssert(t *testing.T) {
+    req := httptest.NewRequest("GET", "/api/v1/items", nil)
+    _ = req
+    if 1 != 1 {
+        t.Errorf("unrelated math failure")
+    }
+}
+"""
+    has_assert, has_ref, has_code = _inspect_polyglot_test_blocks(go_content, "/api/v1/items", "handler_test.go")
+    assert has_assert is False
+    assert has_ref is True
+
+    route = RouteDefinition(path="/api/v1/items", methods=["GET"], handler="listItems", source="main.go", line=10)
+    cov_status = _evaluate_route_test_coverage(route, [("handler_test.go", go_content)])
+    assert cov_status == "test_reference_candidate"
+    assert cov_status != "test_verified"
+
+
+def test_polyglot_route_coverage_scenario_3_route_call_in_one_func_and_assert_in_another():
+    from ghost_hunter.discovery.audit import _evaluate_route_test_coverage, _inspect_polyglot_test_blocks
+    from ghost_hunter.discovery.languages.models import RouteDefinition
+
+    # Route call in TestOne, response assertion in TestTwo -> must NOT be joined
+    java_content = """package com.example;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+public class OrderControllerTest {
+    @Test
+    public void testEndpointCall() {
+        mockMvc.perform(get("/api/v1/items"));
+    }
+
+    @Test
+    public void testAnotherLogic() {
+        assertEquals(200, res.getStatusCode().value());
+    }
+}
+"""
+    has_assert, has_ref, has_code = _inspect_polyglot_test_blocks(java_content, "/api/v1/items", "OrderControllerTest.java")
+    assert has_assert is False
+    assert has_ref is True
+
+    route = RouteDefinition(path="/api/v1/items", methods=["GET"], handler="listItems", source="main.java", line=10)
+    cov_status = _evaluate_route_test_coverage(route, [("OrderControllerTest.java", java_content)])
+    assert cov_status == "test_reference_candidate"
+    assert cov_status != "test_verified"
+
+
+def test_polyglot_route_coverage_scenario_4_real_request_and_response_assertion():
+    from ghost_hunter.discovery.audit import _evaluate_route_test_coverage, _inspect_polyglot_test_blocks
+    from ghost_hunter.discovery.languages.models import RouteDefinition
+
+    # Route request and response assertion exist in the SAME identifiable test function
+    go_content = """package main
+import (
+    "net/http/httptest"
+    "testing"
+)
+func TestRealRequestAndResponse(t *testing.T) {
+    req := httptest.NewRequest("GET", "/api/v1/items", nil)
+    w := httptest.NewRecorder()
+    router.ServeHTTP(w, req)
+    if w.Code != 200 {
+        t.Errorf("expected 200 got %d", w.Code)
+    }
+}
+"""
+    has_assert, has_ref, has_code = _inspect_polyglot_test_blocks(go_content, "/api/v1/items", "handler_test.go")
+    assert has_assert is True
+
+    route = RouteDefinition(path="/api/v1/items", methods=["GET"], handler="listItems", source="main.go", line=10)
+    cov_status = _evaluate_route_test_coverage(route, [("handler_test.go", go_content)])
+    assert cov_status == "test_assertion_candidate"
+    assert cov_status != "test_verified"
+
+
+def test_polyglot_route_coverage_scenario_5_nested_braces_and_multiple_test_blocks():
+    from ghost_hunter.discovery.audit import _evaluate_route_test_coverage, _inspect_polyglot_test_blocks
+    from ghost_hunter.discovery.languages.models import RouteDefinition
+
+    # Test function contains nested if/for blocks before assertion; must not be truncated prematurely
+    cs_content = """using Xunit;
+public class ApiTests {
+    [Fact]
+    public async Task TestWithNestedBraces() {
+        if (true) {
+            for (int i = 0; i < 1; i++) {
+                var response = await client.GetAsync("/api/v1/items");
+                if (response != null) {
+                    Assert.Equal(200, (int)response.StatusCode);
+                }
+            }
+        }
+    }
+}
+"""
+    has_assert, has_ref, has_code = _inspect_polyglot_test_blocks(cs_content, "/api/v1/items", "ApiTests.cs")
+    assert has_assert is True
+
+    route = RouteDefinition(path="/api/v1/items", methods=["GET"], handler="listItems", source="controller.cs", line=10)
+    cov_status = _evaluate_route_test_coverage(route, [("ApiTests.cs", cs_content)])
+    assert cov_status == "test_assertion_candidate"
+    assert cov_status != "test_verified"
+
+
+def test_polyglot_route_coverage_scenario_6_comments_containing_route_paths():
+    from ghost_hunter.discovery.audit import _evaluate_route_test_coverage, _inspect_polyglot_test_blocks
+    from ghost_hunter.discovery.languages.models import RouteDefinition
+
+    # Route path appears ONLY inside code comments, never in active code
+    php_content = """<?php
+use PHPUnit\\Framework\\TestCase;
+class ItemTest extends TestCase {
+    public function testCommentOnly() {
+        // GET /api/v1/items should return items list
+        /* Also check /api/v1/items with filter */
+        $this->assertTrue(true);
+    }
+}
+"""
+    has_assert, has_ref, has_code = _inspect_polyglot_test_blocks(php_content, "/api/v1/items", "ItemTest.php")
+    assert has_assert is False
+    assert has_ref is False
+    assert has_code is False
+
+    route = RouteDefinition(path="/api/v1/items", methods=["GET"], handler="listItems", source="routes.php", line=10)
+    cov_status = _evaluate_route_test_coverage(route, [("ItemTest.php", php_content)])
+    assert cov_status == "testing_gap_candidate"
+    assert cov_status != "test_verified"
+
+
+def test_polyglot_route_coverage_scenario_7_dynamic_endpoint_construction():
+    from ghost_hunter.discovery.audit import _evaluate_route_test_coverage, _inspect_polyglot_test_blocks
+    from ghost_hunter.discovery.languages.models import RouteDefinition
+
+    # Endpoint URL is constructed dynamically via string format/variables
+    ruby_content = """RSpec.describe 'Items' do
+  it 'fetches items dynamically' do
+    resource = 'items'
+    get build_dynamic_url(resource)
+    expect(response.status).to eq(200)
+  end
+end
+"""
+    has_assert, has_ref, has_code = _inspect_polyglot_test_blocks(ruby_content, "/api/v1/items", "items_spec.rb")
+    assert has_assert is False
+    assert has_ref is False
+    assert has_code is False
+
+    route = RouteDefinition(path="/api/v1/items", methods=["GET"], handler="listItems", source="routes.rb", line=10)
+    cov_status = _evaluate_route_test_coverage(route, [("items_spec.rb", ruby_content)])
+    assert cov_status == "testing_gap_candidate"
+    assert cov_status != "test_verified"
+
+
+def test_polyglot_route_coverage_scenario_8_test_files_with_unsupported_syntax():
+    from ghost_hunter.discovery.audit import _evaluate_route_test_coverage, _inspect_polyglot_test_blocks
+    from ghost_hunter.discovery.languages.models import RouteDefinition
+
+    # Unsupported or malformed test syntax does not fabricate false assertion candidates
+    rust_content = """
+    // Malformed macro or syntax errors
+    #[test]
+    fn test_broken_syntax( {
+        {{{ /api/v1/items ???
+    """
+    has_assert, has_ref, has_code = _inspect_polyglot_test_blocks(rust_content, "/api/v1/items", "test.rs")
+    assert has_assert is False
+
+    route = RouteDefinition(path="/api/v1/items", methods=["GET"], handler="listItems", source="lib.rs", line=10)
+    cov_status = _evaluate_route_test_coverage(route, [("test.rs", rust_content)])
+    # Conservative fallback: either testing_gap_candidate or test_reference_candidate, NEVER test_assertion_candidate or test_verified
+    assert cov_status != "test_assertion_candidate"
+    assert cov_status != "test_verified"
+
