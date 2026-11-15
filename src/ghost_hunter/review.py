@@ -79,7 +79,14 @@ def _get_git_diff(
                         num_lines = len(f.read_text(encoding="utf-8", errors="ignore").splitlines())
                     except OSError:
                         num_lines = 1
-                    changed_files.append({"path": rel, "lines": list(range(1, num_lines + 1))})
+                    changed_files.append({
+                        "path": rel,
+                        "lines": list(range(1, num_lines + 1)),
+                        "is_deletion_only": False,
+                        "has_additions": True,
+                        "deleted_count": 0,
+                        "is_untracked": True,
+                    })
         return False, "", changed_files
 
     # 2. Resolve target for git repo
@@ -119,6 +126,8 @@ def _get_git_diff(
     current_file = None
     current_lines: list[int] = []
     cur_line_num = 0
+    deleted_count = 0
+    added_count = 0
 
     file_header_re = re.compile(r"^diff --git a/(.*) b/(.*)")
     hunk_header_re = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
@@ -127,10 +136,20 @@ def _get_git_diff(
         fm = file_header_re.match(line)
         if fm:
             if current_file:
-                changed_files.append({"path": current_file, "lines": sorted(set(current_lines))})
+                is_del_only = (deleted_count > 0 and added_count == 0)
+                changed_files.append({
+                    "path": current_file,
+                    "lines": sorted(set(current_lines)),
+                    "is_deletion_only": is_del_only,
+                    "has_additions": added_count > 0,
+                    "deleted_count": deleted_count,
+                    "is_untracked": False,
+                })
             current_file = fm.group(2)
             current_lines = []
             cur_line_num = 0
+            deleted_count = 0
+            added_count = 0
             continue
 
         hm = hunk_header_re.match(line)
@@ -141,14 +160,23 @@ def _get_git_diff(
         if current_file and cur_line_num > 0:
             if line.startswith("+") and not line.startswith("+++"):
                 current_lines.append(cur_line_num)
+                added_count += 1
                 cur_line_num += 1
             elif line.startswith("-") and not line.startswith("---"):
-                pass
+                deleted_count += 1
             else:
                 cur_line_num += 1
 
     if current_file:
-        changed_files.append({"path": current_file, "lines": sorted(set(current_lines))})
+        is_del_only = (deleted_count > 0 and added_count == 0)
+        changed_files.append({
+            "path": current_file,
+            "lines": sorted(set(current_lines)),
+            "is_deletion_only": is_del_only,
+            "has_additions": added_count > 0,
+            "deleted_count": deleted_count,
+            "is_untracked": False,
+        })
 
     # 3. If reviewing working tree (uncommitted and not staged), detect untracked new source files
     if effective_target == "uncommitted" and not staged and not branch and not commit:
@@ -171,11 +199,130 @@ def _get_git_diff(
                                 count = len(upath.read_text(encoding="utf-8", errors="ignore").splitlines())
                             except OSError:
                                 count = 1
-                            changed_files.append({"path": untracked_rel, "lines": list(range(1, count + 1))})
+                            changed_files.append({
+                                "path": untracked_rel,
+                                "lines": list(range(1, count + 1)),
+                                "is_deletion_only": False,
+                                "has_additions": True,
+                                "deleted_count": 0,
+                                "is_untracked": True,
+                            })
         except (FileNotFoundError, OSError):
             pass
 
     return is_git_repo, diff_output, changed_files
+
+
+def _inspect_function_transactions(
+    content: str,
+    file_path: str,
+) -> list[tuple[int, str, list[int]]]:
+    """Inspect database mutations within individual function/method bodies.
+
+    Returns:
+        List of (function_line, function_name, mutation_lines) for functions having
+        2+ database mutations without a transaction boundary in that function's scope.
+    """
+    db_mutation_re = re.compile(
+        r"""\b(?:db\.session\.(?:add|delete|commit)|objects\.(?:create|delete|update)|repository\.(?:save|delete)|\.save\(|\.delete\()\b"""
+    )
+    transaction_wrapper_re = re.compile(
+        r"""\b(?:transaction\.atomic|db\.session\.begin|@transactional|@transaction\.atomic|TransactionScope|db\.Begin|DB::transaction)\b"""
+    )
+
+    unprotected_functions: list[tuple[int, str, list[int]]] = []
+
+    # 1. Python AST parsing for .py files
+    if file_path.endswith(".py"):
+        try:
+            tree = ast.parse(content)
+            for node in ast.walk(tree):
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+
+                # Check decorators
+                has_tx_decorator = False
+                for dec in node.decorator_list:
+                    try:
+                        dec_text = ast.unparse(dec)
+                        if transaction_wrapper_re.search(dec_text):
+                            has_tx_decorator = True
+                            break
+                    except Exception:
+                        pass
+                if has_tx_decorator:
+                    continue
+
+                # Find mutations within this function (excluding nested functions)
+                mutation_lines: list[int] = []
+                has_tx_context = False
+
+                for child in ast.walk(node):
+                    if child is node:
+                        continue
+                    if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        continue
+
+                    if isinstance(child, (ast.With, ast.AsyncWith)):
+                        for item in child.items:
+                            try:
+                                ctx_text = ast.unparse(item.context_expr)
+                                if transaction_wrapper_re.search(ctx_text):
+                                    has_tx_context = True
+                            except Exception:
+                                pass
+
+                    if isinstance(child, ast.Call):
+                        try:
+                            call_text = ast.unparse(child)
+                            if db_mutation_re.search(call_text):
+                                mutation_lines.append(getattr(child, "lineno", node.lineno))
+                        except Exception:
+                            pass
+
+                mutation_lines = sorted(set(mutation_lines))
+                if len(mutation_lines) >= 2 and not has_tx_context:
+                    unprotected_functions.append((node.lineno, node.name, mutation_lines))
+
+            return unprotected_functions
+        except SyntaxError:
+            pass
+
+    # 2. Block-level parsing for non-Python or syntax-fallback
+    lines = content.splitlines()
+    func_pattern = re.compile(
+        r"""^\s*(?:(?:public|private|protected|async|static|def|func|function)\s+)+([a-zA-Z0-9_]+)\s*\([^)]*\)"""
+    )
+    current_func: str | None = None
+    func_start_line = 0
+    func_lines: list[str] = []
+    func_mutations: list[int] = []
+
+    for idx, line in enumerate(lines, 1):
+        fm = func_pattern.search(line)
+        if fm:
+            if current_func and len(func_mutations) >= 2:
+                func_text = "\n".join(func_lines)
+                if not transaction_wrapper_re.search(func_text):
+                    unprotected_functions.append((func_start_line, current_func, func_mutations))
+            current_func = fm.group(1)
+            func_start_line = idx
+            func_lines = [line]
+            func_mutations = []
+            if db_mutation_re.search(line):
+                func_mutations.append(idx)
+        else:
+            if current_func:
+                func_lines.append(line)
+                if db_mutation_re.search(line):
+                    func_mutations.append(idx)
+
+    if current_func and len(func_mutations) >= 2:
+        func_text = "\n".join(func_lines)
+        if not transaction_wrapper_re.search(func_text):
+            unprotected_functions.append((func_start_line, current_func, func_mutations))
+
+    return unprotected_functions
 
 
 def run_code_review(
@@ -221,13 +368,29 @@ def run_code_review(
     pre_existing_risks: list[ReviewFinding] = []
 
     changed_paths = {cf["path"] for cf in changed_files}
-    changed_lines_by_file: dict[str, set[int]] = {cf["path"]: set(cf["lines"]) for cf in changed_files}
+    file_meta_by_path: dict[str, dict[str, Any]] = {cf["path"]: cf for cf in changed_files}
 
     def record_finding(f: ReviewFinding):
-        file_lines = changed_lines_by_file.get(f.file_path, set())
-        if not file_lines or f.line_number in file_lines:
+        meta = file_meta_by_path.get(f.file_path)
+        if not meta:
+            # File was not modified in this diff
+            pre_existing_risks.append(f)
+            return
+
+        added_lines = set(meta.get("lines", []))
+        is_del_only = meta.get("is_deletion_only", False)
+
+        if is_del_only:
+            # Commit only deleted code from this file; findings on existing lines are pre-existing
+            pre_existing_risks.append(f)
+        elif meta.get("is_untracked", False):
+            # Brand new untracked file: all contents are introduced
+            findings.append(f)
+        elif f.line_number in added_lines:
+            # Line was explicitly added in this change
             findings.append(f)
         else:
+            # Line is outside the added lines of the diff
             pre_existing_risks.append(f)
 
     # 1. Unfinished code touched or introduced
@@ -288,30 +451,50 @@ def run_code_review(
                         )
                     )
 
-    # 3. Disconnected client calls in modified files (parameter-aware matching)
+    # 3. Disconnected client calls in modified files (parameter-aware matching with boundary isolation)
     routes: list[RouteDefinition] = scan_data.get("routes", [])
     valid_routes = [r for r in routes if r.source_role == "application_source"]
+    app_boundaries = context.get("application_boundaries", [])
+    has_multiple_apps = len([b for b in app_boundaries if not b.get("is_root")]) > 1
 
     for call in scan_data.get("client_calls", []):
         if call.source in changed_paths:
             norm_call_path = call.path
             if norm_call_path.startswith(("http://", "https://", "//")):
                 continue
-            matched = any(match_route(norm_call_path, r.path) for r in valid_routes)
-            if not matched:
+
+            # Candidate routes must belong to the same application boundary unless explicit cross-service target
+            if has_multiple_apps and call.app_name:
+                candidate_routes = [
+                    r for r in valid_routes
+                    if (r.app_name == call.app_name)
+                    or (r.app_name in ("primary", "", "root"))
+                    or (call.target_service and call.target_service == r.app_name)
+                ]
+            else:
+                candidate_routes = valid_routes
+
+            matching = [r for r in candidate_routes if match_route(norm_call_path, r.path)]
+            if not matching:
+                unrelated_routes = [r for r in valid_routes if match_route(norm_call_path, r.path)]
+                unrelated_note = ""
+                if unrelated_routes:
+                    other_apps = sorted({r.app_name for r in unrelated_routes if r.app_name})
+                    unrelated_note = f" (Route exists in unrelated application(s): {', '.join(other_apps)}, but not in '{call.app_name}')"
+
                 record_finding(
                     ReviewFinding(
                         title=f"Client API call points to unregistered endpoint: {norm_call_path}",
                         category="wiring",
                         severity="High",
-                        confidence="Medium",
-                        current_behavior=f"Modified client code makes a {call.method} request to '{norm_call_path}'.",
+                        confidence="High" if not unrelated_routes else "Medium",
+                        current_behavior=f"Modified client code in '{call.app_name or 'primary'}' makes a {call.method} request to '{norm_call_path}'.",
                         failure_scenario="Requests will receive HTTP 404 Not Found at runtime if the backend route is missing.",
-                        evidence=f"{call.source}:{call.line} -> {call.raw}",
+                        evidence=f"{call.source}:{call.line} -> {call.raw}{unrelated_note}",
                         file_path=call.source,
                         line_number=call.line,
-                        root_cause=f"Endpoint '{norm_call_path}' is not declared in any registered backend route handler.",
-                        recommended_fix=f"Register route handler for '{norm_call_path}' or correct the client request URL.",
+                        root_cause=f"Endpoint '{norm_call_path}' is not declared in application '{call.app_name or 'primary'}' backend route handlers.",
+                        recommended_fix=f"Register route handler for '{norm_call_path}' in application '{call.app_name or 'primary'}' or correct client request URL.",
                         impact="Feature operation will fail when the user triggers this action.",
                         false_positive_risk="Endpoint may be provided by an external microservice or reverse proxy.",
                     )
@@ -323,7 +506,18 @@ def run_code_review(
             norm_call_path = call.path
             if norm_call_path.startswith(("http://", "https://", "//")):
                 continue
-            matching = [r for r in valid_routes if match_route(norm_call_path, r.path)]
+
+            if has_multiple_apps and call.app_name:
+                candidate_routes = [
+                    r for r in valid_routes
+                    if (r.app_name == call.app_name)
+                    or (r.app_name in ("primary", "", "root"))
+                    or (call.target_service and call.target_service == r.app_name)
+                ]
+            else:
+                candidate_routes = valid_routes
+
+            matching = [r for r in candidate_routes if match_route(norm_call_path, r.path)]
             if matching:
                 supported_methods = {m.upper() for r in matching for m in r.methods}
                 req_method = call.method.upper()
@@ -387,10 +581,16 @@ def run_code_review(
                     )
 
     # 6. Unvalidated user input directly interpolated into SQL or commands
-    injection_patterns = [
-        (re.compile(r"""(?:cursor\.execute|\.execute)\s*\(\s*f(?:"[^"\n]*(?:SELECT|INSERT|UPDATE|DELETE)[^"\n]*\{|'[^'\n]*(?:SELECT|INSERT|UPDATE|DELETE)[^'\n]*\{)""", re.IGNORECASE), "raw SQL query with f-string interpolation"),
-        (re.compile(r"""(?:os\.system|subprocess\.(?:Popen|call|run))\s*\(\s*f(?:"[^"\n]*\{|'[^'\n]*\{)"""), "shell command execution with unvalidated f-string interpolation"),
-    ]
+    sql_sink_re = re.compile(
+        r"""(?:cursor\.execute|\.execute)\s*\(\s*f(?:"[^"\n]*(?:SELECT|INSERT|UPDATE|DELETE)[^"\n]*\{|'[^'\n]*(?:SELECT|INSERT|UPDATE|DELETE)[^'\n]*\{)""",
+        re.IGNORECASE,
+    )
+    cmd_sink_re = re.compile(
+        r"""(?:os\.system|subprocess\.(?:Popen|call|run))\s*\(\s*f(?:"[^"\n]*\{|'[^'\n]*\{)"""
+    )
+    user_input_re = re.compile(
+        r"""\b(?:request\.(?:args|form|values|json|GET|POST|query_params|data)|req\.(?:query|body|params)|params|query_params|user_input|userInput|cmd_input|raw_input)\b"""
+    )
     for cf in changed_files:
         p = root / cf["path"]
         if not p.is_file():
@@ -400,22 +600,79 @@ def run_code_review(
         except OSError:
             continue
         for line_num, line in enumerate(content.splitlines(), 1):
-            for ipattern, idesc in injection_patterns:
-                if ipattern.search(line):
+            if sql_sink_re.search(line):
+                is_tainted = bool(user_input_re.search(line))
+                if is_tainted:
                     record_finding(
                         ReviewFinding(
-                            title=f"Injection risk: {idesc}",
+                            title="Injection risk: direct SQL injection from unvalidated user input",
                             category="security",
                             severity="Critical",
                             confidence="High",
-                            current_behavior=f"Unsanitized string interpolation in SQL or system command execution: {line.strip()}",
-                            failure_scenario="External input can alter query syntax or execute arbitrary system commands.",
+                            current_behavior=f"User-controlled request parameter is directly interpolated into raw SQL query: {line.strip()}",
+                            failure_scenario="External input can alter query syntax, bypass authentication, or dump/modify database tables.",
                             evidence=f"{cf['path']}:{line_num} -> {line.strip()}",
                             file_path=cf["path"],
                             line_number=line_num,
-                            root_cause="SQL query or command was constructed with raw string formatting instead of parameterized arguments.",
-                            recommended_fix="Use parameterized queries (e.g. cursor.execute(query, (params,))) or safe subprocess arguments.",
-                            impact="Critical data breach or remote code execution.",
+                            root_cause="User-controlled input was formatted directly into SQL query instead of using parameterized arguments.",
+                            recommended_fix="Use parameterized queries (e.g. cursor.execute(query, (params,))).",
+                            impact="Critical data breach or unauthorized database modification.",
+                            false_positive_risk="Input may have been sanitized prior to line execution.",
+                        )
+                    )
+                else:
+                    record_finding(
+                        ReviewFinding(
+                            title="Injection risk: raw SQL query with f-string interpolation",
+                            category="security",
+                            severity="Medium",
+                            confidence="Medium",
+                            current_behavior=f"SQL query is constructed using f-string interpolation: {line.strip()}",
+                            failure_scenario="If the interpolated variable is ever influenced by external input, it introduces a SQL injection vulnerability.",
+                            evidence=f"{cf['path']}:{line_num} -> {line.strip()}",
+                            file_path=cf["path"],
+                            line_number=line_num,
+                            root_cause="SQL query was constructed with raw string formatting instead of parameterized arguments.",
+                            recommended_fix="Use parameterized queries or validate identifiers against an allowlist.",
+                            impact="Potential security risk if variable provenance changes in future revisions.",
+                            false_positive_risk="Interpolated values may be compile-time constants or internally trusted variables.",
+                        )
+                    )
+            elif cmd_sink_re.search(line):
+                is_tainted = bool(user_input_re.search(line))
+                if is_tainted:
+                    record_finding(
+                        ReviewFinding(
+                            title="Injection risk: arbitrary command execution from user input",
+                            category="security",
+                            severity="Critical",
+                            confidence="High",
+                            current_behavior=f"User-controlled input is directly interpolated into shell command: {line.strip()}",
+                            failure_scenario="External input can inject shell metacharacters and execute arbitrary system commands.",
+                            evidence=f"{cf['path']}:{line_num} -> {line.strip()}",
+                            file_path=cf["path"],
+                            line_number=line_num,
+                            root_cause="Untrusted input was interpolated into shell command string instead of passing an argument list.",
+                            recommended_fix="Pass command arguments as an array/list (e.g. subprocess.run(['cmd', arg])) without shell=True.",
+                            impact="Remote code execution and total system compromise.",
+                            false_positive_risk="Input may have been validated against strict allowlist before execution.",
+                        )
+                    )
+                else:
+                    record_finding(
+                        ReviewFinding(
+                            title="Injection risk: shell command execution with f-string interpolation",
+                            category="security",
+                            severity="Medium",
+                            confidence="Medium",
+                            current_behavior=f"Shell command is constructed using f-string interpolation: {line.strip()}",
+                            failure_scenario="If this variable is ever influenced by external parameters, it creates a command injection risk.",
+                            evidence=f"{cf['path']}:{line_num} -> {line.strip()}",
+                            file_path=cf["path"],
+                            line_number=line_num,
+                            root_cause="Shell command was constructed with string formatting instead of an argument list.",
+                            recommended_fix="Pass arguments as a list without shell=True, or sanitize arguments with shlex.quote.",
+                            impact="Potential code execution if variable source changes.",
                             false_positive_risk="Interpolated values may be compile-time constants or internally trusted variables.",
                         )
                     )
@@ -450,9 +707,7 @@ def run_code_review(
                     )
                 )
 
-    # 8. Mutating database operations without transaction boundary
-    db_mutation_re = re.compile(r"""\b(?:db\.session\.(?:add|delete|commit)|objects\.(?:create|delete|update)|repository\.(?:save|delete))\b""")
-    transaction_wrapper_re = re.compile(r"""\b(?:transaction\.atomic|db\.session\.begin|@transactional|TransactionScope)\b""")
+    # 8. Mutating database operations without transaction boundary (function-scoped inspection)
     for cf in changed_files:
         p = root / cf["path"]
         if not p.is_file():
@@ -461,22 +716,25 @@ def run_code_review(
             content = p.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
+
+        unprotected_funcs = _inspect_function_transactions(content, cf["path"])
         lines = content.splitlines()
-        mutation_lines = [idx + 1 for idx, l in enumerate(lines) if db_mutation_re.search(l)]
-        if len(mutation_lines) >= 2 and not transaction_wrapper_re.search(content):
+        for func_line, func_name, mutation_lines in unprotected_funcs:
+            first_mut = mutation_lines[0]
+            mut_text = lines[first_mut - 1].strip() if 0 < first_mut <= len(lines) else ""
             record_finding(
                 ReviewFinding(
-                    title="Multiple database mutations without transaction boundary",
+                    title=f"Multiple database mutations without transaction boundary in '{func_name}'",
                     category="data_risk",
                     severity="Medium",
-                    confidence="Medium",
-                    current_behavior="Multiple database mutating operations occur without an atomic transaction boundary.",
+                    confidence="High" if cf["path"].endswith(".py") else "Medium",
+                    current_behavior=f"Function '{func_name}' performs {len(mutation_lines)} database mutating operations without an atomic transaction boundary.",
                     failure_scenario="If an intermediate write fails or crashes, partial data is committed, corrupting database consistency.",
-                    evidence=f"{cf['path']}:{mutation_lines[0]} -> {lines[mutation_lines[0]-1].strip()}",
+                    evidence=f"{cf['path']}:{first_mut} -> {mut_text} ({len(mutation_lines)} mutations in '{func_name}')",
                     file_path=cf["path"],
-                    line_number=mutation_lines[0],
-                    root_cause="Mutations are executed sequentially without an atomic transaction wrapper or rollback handler.",
-                    recommended_fix="Wrap multiple database mutations in an atomic transaction block (e.g. 'with transaction.atomic():').",
+                    line_number=first_mut,
+                    root_cause=f"Function '{func_name}' executes multiple mutations sequentially without an atomic transaction wrapper or rollback handler.",
+                    recommended_fix=f"Wrap mutations in '{func_name}' in an atomic transaction block (e.g. 'with transaction.atomic():' or @transactional).",
                     impact="Partial state commitment and database inconsistency.",
                     false_positive_risk="Framework or session may have auto-commit/transaction middleware configured.",
                 )
