@@ -173,21 +173,17 @@ When invoked with `/ghost-hunt audit`, inspect the complete repository with scop
 When invoked with `/ghost-hunt review [target]`, inspect modified code and its surrounding call paths:
 - **Review Targets:** Uncommitted changes (default), staged changes (`--staged`), branch comparison (`--branch <base>`), or specific commit/PR (`--commit <sha>`).
 - **Scope of Review:** Inspect not just changed lines, but all callers, routes, consumers, error paths, and regression tests affected by the change.
-- **Line-Range Defect Isolation:** Distinguish defects introduced on changed lines from pre-existing issues in surrounding unchanged code. Report surrounding issues separately as pre-existing risks.
+- **Line-Range Defect Isolation:** Distinguish defects introduced on changed lines from pre-existing issues in surrounding unchanged code. In deletion-only and mixed diffs, accurately attribute findings without blaming pure deletions.
 - **Automated Engine Checks:**
-  1. *Broken Wiring & Disconnected Calls:* Client API calls targeting non-existent endpoints (parameter-aware matching).
-  2. *Route & Method Mismatches:* HTTP method discrepancies between client call and registered route handler (405 risks).
+  1. *Broken Wiring & Disconnected Calls:* Client API calls targeting non-existent endpoints (parameter-aware matching with monorepo boundary isolation).
+  2. *Route & Method Mismatches:* HTTP method discrepancies between client call and registered route handler (HTTP 405 risks).
   3. *Missing Authorization:* Sensitive route boundaries (`/admin`, `/delete`, mutative endpoints) lacking auth decorators or middleware.
-  4. *Unvalidated Input & Injection:* User-controlled input interpolated directly into SQL queries or shell commands.
-  5. *Persistence & Data Loss Risks:* Multiple database mutations executed without an atomic transaction boundary.
+  4. *Unvalidated Input & Injection Calibration:* Direct user-controlled input in SQL/shell sinks (Critical) vs defensive unparameterized construction patterns (Medium).
+  5. *Persistence & Transaction Boundaries:* Function-scoped inspection of multiple database mutations lacking atomic transaction wrappers.
   6. *Error Handling Risks:* Silent exception swallowing (`except: pass`, empty `catch`).
   7. *Sensitive Data Exposure:* Hardcoded API keys, bearer tokens, or personal access credentials.
   8. *Unfinished Implementations:* Stubs, `TODO`, `panic("not implemented")`, or missing logic in touched files.
   9. *Regression Test Gaps:* Modified route handlers lacking response assertion tests.
-- **Agent-Native Investigation Instructions (for AI agents):**
-  - *Performance Bottlenecks:* Inspect loops in modified files for N+1 database queries or avoidable expensive allocations.
-  - *Overengineering & Simplicity:* Verify whether newly introduced abstractions duplicate existing project helpers; prefer simple local logic.
-  - *Safe Simplification:* Never remove validation, auth checks, error handling, or accessibility purely to reduce line count.
 - **Mandatory 7-Point Finding Structure:**
   1. What the code currently does.
   2. What can go wrong.
@@ -196,6 +192,52 @@ When invoked with `/ghost-hunt review [target]`, inspect modified code and its s
   5. A minimal recommended fix.
   6. The impact of leaving it unresolved.
   7. Why the finding could be a false positive.
+
+---
+
+## ⚡ Engineering Principles & Investigation Discipline
+
+Ghost Hunt incorporates battle-tested engineering principles to deliver actionable, high-confidence investigations:
+
+### 1. The Ladder of Minimal Intervention (Smallest Complete Solution)
+Before recommending or writing code, evaluate through this progression:
+1. **YAGNI (Eliminate):** Does this logic or abstraction need to exist at all? Dead flexibility is debt.
+2. **Reuse:** Does an existing project utility, helper, or model already solve this?
+3. **Stdlib / Platform Native:** Can the language standard library or runtime platform handle this without new dependencies?
+4. **Smallest Complete Fix:** Recommend the most surgical patch that completely resolves the root cause. Never add speculative abstractions.
+
+### 2. Caller / Callee Data Flow Tracing
+Never evaluate code in isolation. Trace upstream callers (who provides the input?) and downstream callees (what sinks and mutations are triggered?). Verify parameter types, nullability, and error handling across every hop.
+
+### 3. Workload, Concurrency & Transaction Reasoning
+- **Data Risk:** Ensure multiple database mutations inside a single operation execute within an atomic transaction boundary.
+- **Workload Impact:** Inspect loops for N+1 database queries or redundant HTTP requests.
+- **Shared State:** Scrutinize concurrency hazards, unclosed connections, and resource leaks.
+
+### 4. Concrete Failure Scenarios
+Every finding must describe the exact, realistic scenario under which the failure manifests (e.g. "When a user submits the checkout form with a discount code, `items` is None, raising AttributeError: 'NoneType' object has no attribute 'total' and returning HTTP 500"). Never issue generic stylistic warnings.
+
+### 5. Explicit Uncertainty & Calibrated Severity
+- If a check cannot be proven due to missing test state, permissions, or environments, declare it **`UNKNOWN`**. Never guess.
+- Distinguish confirmed defects (proven exploitability, broken routes) from defensive pattern candidates requiring owner confirmation.
+
+---
+
+## 🔗 Feature Connection Map & Cross-Layer Contracts
+
+Ghost Hunt's signature differentiator is the end-to-end **8-Layer Feature Connection Pipeline**:
+
+```text
+1. UI Action ──> 2. Client Call ──> 3. Route Handler ──> 4. Controller
+                                                                │
+8. Test Check <── 7. Response UI <── 6. Database Model <── 5. Service
+```
+
+### Cross-Layer Contract Rules:
+- **Application Boundary Isolation:** In monorepos, client calls in Application A are never satisfied by routes in unrelated Application B without an explicit gateway or proxy contract.
+- **Method & Path Consistency:** Client HTTP verbs and URL paths must match backend route declarations exactly.
+- **Verifiable Test Assertion Evidence:** Static test coverage requires explicit assertion statements or conditional checks on response status/body; passive reads or logging do NOT qualify as assertions.
+- **Truthful Runtime Verification:** `PASS` requires uncontaminated execution against authoritative expectations. Static inspection never claims runtime verification.
 
 ---
 

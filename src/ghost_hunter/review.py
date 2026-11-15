@@ -778,6 +778,9 @@ def run_code_review(
     findings.sort(key=lambda f: (severity_order.get(f.severity, 4), f.file_path, f.line_number))
     pre_existing_risks.sort(key=lambda f: (severity_order.get(f.severity, 4), f.file_path, f.line_number))
 
+    from ghost_hunter.discovery.connection_map import generate_feature_connection_map
+    conn_map = generate_feature_connection_map(root)
+
     return {
         "project_context": context,
         "target": target,
@@ -791,6 +794,14 @@ def run_code_review(
         "findings": [asdict(f) for f in findings],
         "pre_existing_risks_count": len(pre_existing_risks),
         "pre_existing_risks": [asdict(f) for f in pre_existing_risks],
+        "connection_map": {
+            "nodes_count": conn_map["nodes_count"],
+            "edges_count": conn_map["edges_count"],
+            "broken_edges_count": conn_map["broken_edges_count"],
+            "missing_edges_count": conn_map["missing_edges_count"],
+            "orphaned_nodes_count": conn_map["orphaned_nodes_count"],
+            "contract_findings_count": conn_map["contract_findings_count"],
+        },
     }
 
 
@@ -801,6 +812,7 @@ def render_review_markdown(result: dict[str, Any]) -> str:
     pre_existing = result.get("pre_existing_risks", [])
     target = result.get("target", "uncommitted")
     changed_count = result.get("changed_files_count", 0)
+    conn_summary = result.get("connection_map", {})
 
     lines = [
         "# Ghost Hunt — Code Change Review Report",
@@ -812,10 +824,16 @@ def render_review_markdown(result: dict[str, Any]) -> str:
         f"- **Changed Files Analyzed:** `{changed_count}`",
         f"- **Introduced Findings:** `{len(findings)}`",
         f"- **Pre-Existing Risks in Surrounding Code:** `{len(pre_existing)}`",
+    ]
+    if conn_summary:
+        lines.append(
+            f"- **Feature Pipeline Gaps:** `{conn_summary.get('broken_edges_count', 0)} broken, {conn_summary.get('missing_edges_count', 0)} missing, {conn_summary.get('orphaned_nodes_count', 0)} orphaned`"
+        )
+    lines.extend([
         "",
         "---",
         "",
-    ]
+    ])
 
     if changed_count == 0:
         lines.append("> **No changes to review.** Working tree / target diff is clean.")
