@@ -47,7 +47,7 @@ class KotlinAdapter(BaseLanguageAdapter):
 
     def get_capabilities(self) -> dict[str, bool]:
         return build_standard_capabilities(
-            syntax_parsing=True,
+            syntax_parsing=False,
             symbol_analysis=True,
             import_export_analysis=True,
             reference_analysis=True,
@@ -64,6 +64,7 @@ class KotlinAdapter(BaseLanguageAdapter):
 
     def get_limitations(self) -> list[str]:
         return [
+            "Structural regex and lexical scanning; Kotlin compiler PSI/FIR AST is not used.",
             "Structural token parsing; Kotlin coroutines context and Ktor DSL route nesting are tracked statically.",
             "Gradle Kotlin DSL build dependencies require gradle evaluation.",
             "Inline reified functions and compiler plugins (e.g. Kotlin Serialization) require kotlinc compilation.",

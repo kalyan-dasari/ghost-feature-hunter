@@ -47,7 +47,7 @@ class CSharpAdapter(BaseLanguageAdapter):
 
     def get_capabilities(self) -> dict[str, bool]:
         return build_standard_capabilities(
-            syntax_parsing=True,
+            syntax_parsing=False,
             symbol_analysis=True,
             import_export_analysis=True,
             reference_analysis=True,
@@ -64,6 +64,7 @@ class CSharpAdapter(BaseLanguageAdapter):
 
     def get_limitations(self) -> list[str]:
         return [
+            "Structural regex and lexical scanning; Roslyn AST compilation is not used.",
             "Structural C# token and attribute parsing; dynamic Roslyn compilation and runtime middleware pipelines are approximated.",
             "Minimal API route group extensions and custom route handlers are analyzed statically.",
             "NuGet package graph resolution requires dotnet CLI or MSBuild evaluation.",

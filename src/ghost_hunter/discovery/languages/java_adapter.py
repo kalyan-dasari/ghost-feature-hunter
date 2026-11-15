@@ -47,7 +47,7 @@ class JavaAdapter(BaseLanguageAdapter):
 
     def get_capabilities(self) -> dict[str, bool]:
         return build_standard_capabilities(
-            syntax_parsing=True,
+            syntax_parsing=False,
             symbol_analysis=True,
             import_export_analysis=True,
             reference_analysis=True,
@@ -64,6 +64,7 @@ class JavaAdapter(BaseLanguageAdapter):
 
     def get_limitations(self) -> list[str]:
         return [
+            "Structural regex and lexical scanning; genuine Java compiler AST is not used.",
             "Structural annotation and syntax parsing; dynamic Spring bean dispatching and custom routing filters are approximated.",
             "Runtime classpath dependency resolution requires Maven or Gradle build tooling.",
             "Dynamic Reflection and bytecode manipulation (e.g. CGLIB, ByteBuddy) are not evaluated without JVM execution.",

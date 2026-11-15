@@ -47,7 +47,7 @@ class GoAdapter(BaseLanguageAdapter):
 
     def get_capabilities(self) -> dict[str, bool]:
         return build_standard_capabilities(
-            syntax_parsing=True,
+            syntax_parsing=False,
             symbol_analysis=True,
             import_export_analysis=True,
             reference_analysis=True,
@@ -64,7 +64,7 @@ class GoAdapter(BaseLanguageAdapter):
 
     def get_limitations(self) -> list[str]:
         return [
-            "Structural lexical and AST-level token parsing; dynamic reflection-based routing and interface dispatching are approximated.",
+            "Structural regex and lexical scanning; genuine Go compiler AST parsing is not used.",
             "Variable-assigned routes and nested router closures are tracked statically without runtime evaluation.",
             "Full package symbol graph resolution across GOPATH/Go modules requires go toolchain compilation.",
         ]

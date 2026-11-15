@@ -47,7 +47,7 @@ class PHPAdapter(BaseLanguageAdapter):
 
     def get_capabilities(self) -> dict[str, bool]:
         return build_standard_capabilities(
-            syntax_parsing=True,
+            syntax_parsing=False,
             symbol_analysis=True,
             import_export_analysis=True,
             reference_analysis=True,
@@ -64,6 +64,7 @@ class PHPAdapter(BaseLanguageAdapter):
 
     def get_limitations(self) -> list[str]:
         return [
+            "Structural regex and lexical scanning; PHP parser AST is not used.",
             "Structural token parsing; dynamic service container bindings and runtime reflection are approximated.",
             "Dynamic Route macros and runtime controller dispatching are evaluated statically.",
             "Composer package autoloading requires composer environment execution.",

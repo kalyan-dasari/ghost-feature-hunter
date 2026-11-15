@@ -47,7 +47,7 @@ class RubyAdapter(BaseLanguageAdapter):
 
     def get_capabilities(self) -> dict[str, bool]:
         return build_standard_capabilities(
-            syntax_parsing=True,
+            syntax_parsing=False,
             symbol_analysis=True,
             import_export_analysis=True,
             reference_analysis=True,
@@ -64,6 +64,7 @@ class RubyAdapter(BaseLanguageAdapter):
 
     def get_limitations(self) -> list[str]:
         return [
+            "Structural regex and lexical scanning; Ripper/Prism AST parser is not used.",
             "Structural Ruby token parsing; metaprogrammed routes and dynamic method_missing dispatch are approximated.",
             "Rails resource routing macros (e.g. resources :orders) are expanded statically to conventional REST endpoints.",
             "Bundler Gemfile dependency resolution requires ruby/bundler execution.",

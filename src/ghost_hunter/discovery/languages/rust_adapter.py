@@ -47,7 +47,7 @@ class RustAdapter(BaseLanguageAdapter):
 
     def get_capabilities(self) -> dict[str, bool]:
         return build_standard_capabilities(
-            syntax_parsing=True,
+            syntax_parsing=False,
             symbol_analysis=True,
             import_export_analysis=True,
             reference_analysis=True,
@@ -64,6 +64,7 @@ class RustAdapter(BaseLanguageAdapter):
 
     def get_limitations(self) -> list[str]:
         return [
+            "Structural regex and lexical scanning; rustc / syn AST parser is not used.",
             "Structural token and macro parsing; procedural macro expansion and monomorphized types require rustc/cargo.",
             "Tower service layers and Axum nested routers are tracked statically.",
             "Cargo crate graph resolution requires cargo metadata evaluation.",

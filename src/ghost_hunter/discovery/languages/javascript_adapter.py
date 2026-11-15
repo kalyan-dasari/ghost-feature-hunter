@@ -69,11 +69,11 @@ class JavaScriptAdapter(BaseLanguageAdapter):
 
     @property
     def capability_level(self) -> str:
-        return "deep-static"
+        return "structural"
 
     def get_capabilities(self) -> dict[str, bool]:
         return build_standard_capabilities(
-            syntax_parsing=True,
+            syntax_parsing=False,
             symbol_analysis=True,
             import_export_analysis=True,
             reference_analysis=True,
@@ -83,13 +83,14 @@ class JavaScriptAdapter(BaseLanguageAdapter):
             model_schema_analysis=True,
             test_discovery=True,
             test_assertion_candidates=True,
-            dependency_usage_analysis=True,
+            dependency_usage_analysis=False,
             unfinished_code_detection=True,
             duplicate_detection=False,
         )
 
     def get_limitations(self) -> list[str]:
         return [
+            "Structural regex and lexical scanning; genuine parser-backed AST parsing is not used.",
             "Lexical and structural regex analysis; dynamic middleware chains and higher-order components are approximated.",
             "Runtime client wrappers (e.g. dynamic tRPC or GraphQL queries) require schema/introspection.",
             "Dynamic Next.js catch-all routes ([...slug]) are normalized to standard parameter representations.",
