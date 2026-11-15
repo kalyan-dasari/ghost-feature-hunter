@@ -172,7 +172,7 @@ class SQLAdapter(BaseLanguageAdapter):
 
     def get_capabilities(self) -> dict[str, bool]:
         return build_standard_capabilities(
-            syntax_parsing=True,
+            syntax_parsing=False,
             symbol_analysis=True,
             import_export_analysis=False,
             reference_analysis=False,
