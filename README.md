@@ -94,7 +94,7 @@ You can also ask in natural language:
 
 ## 🌟 The Three Core Capabilities
 
-1. **Multi-Language Discovery & Scope Lock:** Understands project structure before selecting targets. Distinguishes monorepo workspaces and benchmark fixtures from primary application code. Declares transparent, honest capability levels across Python (`deep-static`), JavaScript/TypeScript (`deep-static`), Go (`structural`), Java (`structural`), C# (`structural`), PHP (`structural`), Ruby (`structural`), Rust (`structural`), Kotlin (`structural`), and foundation ecosystems (C/C++, Swift, SQL).
+1. **Multi-Language Discovery & Scope Lock:** Understands project structure before selecting targets. Distinguishes monorepo workspaces and benchmark fixtures from primary application code. Declares transparent, honest capability levels across Python (`deep-static`), JavaScript/TypeScript (`structural`), Go (`structural`), Java (`structural`), C# (`structural`), PHP (`structural`), Ruby (`structural`), Rust (`structural`), Kotlin (`structural`), and foundation ecosystems (C/C++, Swift, SQL).
 2. **Individual Feature Investigation:** Traces cross-boundary data flow, isolates stateful test scenarios to prevent contamination, and validates expectations against authoritative requirement sources.
 3. **Ghost Feature Detection & Whole-Repository Audit:** Constructs a feature connection graph across 8 architectural layers to unmask disconnected features, missing routes, method mismatches, empty implementations, orphaned services, and structural code duplication.
 

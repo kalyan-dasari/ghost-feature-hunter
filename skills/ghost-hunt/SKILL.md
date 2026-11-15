@@ -173,17 +173,21 @@ When invoked with `/ghost-hunt audit`, inspect the complete repository with scop
 When invoked with `/ghost-hunt review [target]`, inspect modified code and its surrounding call paths:
 - **Review Targets:** Uncommitted changes (default), staged changes (`--staged`), branch comparison (`--branch <base>`), or specific commit/PR (`--commit <sha>`).
 - **Scope of Review:** Inspect not just changed lines, but all callers, routes, consumers, error paths, and regression tests affected by the change.
-- **Defects Audited:**
-  1. Broken feature wiring and disconnected data flow
-  2. Incorrect route or HTTP method usage
-  3. Missing validation and authorization
-  4. Data loss, persistence and transaction risks
-  5. Error handling and failure paths (e.g. silent catches)
-  6. Security and sensitive-data exposure (hardcoded secrets)
-  7. Performance bottlenecks and unnecessary expensive operations
-  8. Missing or weak regression tests
-  9. Duplicate implementations and avoidable dependencies
-  10. Overengineering and complexity that can be safely simplified
+- **Line-Range Defect Isolation:** Distinguish defects introduced on changed lines from pre-existing issues in surrounding unchanged code. Report surrounding issues separately as pre-existing risks.
+- **Automated Engine Checks:**
+  1. *Broken Wiring & Disconnected Calls:* Client API calls targeting non-existent endpoints (parameter-aware matching).
+  2. *Route & Method Mismatches:* HTTP method discrepancies between client call and registered route handler (405 risks).
+  3. *Missing Authorization:* Sensitive route boundaries (`/admin`, `/delete`, mutative endpoints) lacking auth decorators or middleware.
+  4. *Unvalidated Input & Injection:* User-controlled input interpolated directly into SQL queries or shell commands.
+  5. *Persistence & Data Loss Risks:* Multiple database mutations executed without an atomic transaction boundary.
+  6. *Error Handling Risks:* Silent exception swallowing (`except: pass`, empty `catch`).
+  7. *Sensitive Data Exposure:* Hardcoded API keys, bearer tokens, or personal access credentials.
+  8. *Unfinished Implementations:* Stubs, `TODO`, `panic("not implemented")`, or missing logic in touched files.
+  9. *Regression Test Gaps:* Modified route handlers lacking response assertion tests.
+- **Agent-Native Investigation Instructions (for AI agents):**
+  - *Performance Bottlenecks:* Inspect loops in modified files for N+1 database queries or avoidable expensive allocations.
+  - *Overengineering & Simplicity:* Verify whether newly introduced abstractions duplicate existing project helpers; prefer simple local logic.
+  - *Safe Simplification:* Never remove validation, auth checks, error handling, or accessibility purely to reduce line count.
 - **Mandatory 7-Point Finding Structure:**
   1. What the code currently does.
   2. What can go wrong.
@@ -192,7 +196,6 @@ When invoked with `/ghost-hunt review [target]`, inspect modified code and its s
   5. A minimal recommended fix.
   6. The impact of leaving it unresolved.
   7. Why the finding could be a false positive.
-- **Core Principles:** Reuse existing project components and utilities before introducing new abstractions. Never remove validation, error handling, accessibility, or security checks merely to reduce lines of code.
 
 ---
 
