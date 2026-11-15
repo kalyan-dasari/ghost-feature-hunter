@@ -193,10 +193,27 @@ def detect_ghost_features(
             call.call_type = "external_service_call"
             continue
 
-        matching_routes: list[RouteDefinition] = []
-        for r_path, r_list in routes_by_path.items():
-            if match_route(endpoint, r_path):
-                matching_routes.extend(r_list)
+        if call.scope == "primary_application" or call.source_role == "application_source":
+            candidate_routes = [
+                r for r in routes
+                if r.source_role == "application_source" and r.scope == "primary_application"
+            ]
+        elif call.scope == "example":
+            candidate_routes = [
+                r for r in routes
+                if r.app_name == call.app_name or (r.source_role == "application_source" and r.scope == "primary_application")
+            ]
+        elif call.scope == "test_and_fixture":
+            candidate_routes = routes
+        else:
+            candidate_routes = [
+                r for r in routes
+                if r.source_role == "application_source"
+            ]
+
+        matching_routes: list[RouteDefinition] = [
+            r for r in candidate_routes if match_route(endpoint, r.path)
+        ]
 
         if not matching_routes:
             if has_reverse_proxy:
@@ -320,6 +337,10 @@ def detect_ghost_features(
     # 6. Orphaned Business Services (Functions in service files with zero callers)
     # Tests must not silently mask uncalled production code
     for sym in symbols:
+        if getattr(sym, "source_role", "application_source") != "application_source":
+            continue
+        if getattr(sym, "scope", "primary_application") != "primary_application":
+            continue
         if sym.symbol_type in ("function", "service") and not sym.name.startswith("_"):
             source_lower = sym.source.lower()
             if "service" in source_lower or "controller" in source_lower:

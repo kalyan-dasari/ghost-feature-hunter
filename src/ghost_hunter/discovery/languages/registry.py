@@ -319,7 +319,7 @@ class LanguageRegistry:
                 all_calls_made.extend(calls_in_file)
                 if role == "application_source":
                     production_calls_made.extend(calls_in_file)
-                elif role == "test":
+                elif role in ("test", "fixture"):
                     test_calls_made.extend(calls_in_file)
                 elif role in ("example", "demo", "benchmark"):
                     example_calls_made.extend(calls_in_file)

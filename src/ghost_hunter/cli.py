@@ -472,7 +472,7 @@ def report(
 
 @app.command()
 def review(
-    target: str = typer.Argument("uncommitted", help="Review target: 'uncommitted', 'staged', 'branch', or commit SHA."),
+    target: Optional[str] = typer.Argument(None, help="Review target: 'uncommitted', 'staged', branch name, or commit SHA."),
     project_root: Path = typer.Option(Path.cwd(), "--project-root", "-p", help="Project to review."),
     branch: Optional[str] = typer.Option(None, "--branch", "-b", help="Branch comparison target (e.g. main)."),
     commit: Optional[str] = typer.Option(None, "--commit", "-c", help="Specific commit SHA to review."),
@@ -481,12 +481,23 @@ def review(
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="File to write review report to."),
 ) -> None:
     """Review code changes and surrounding call graph for wiring defects, security risks, and test gaps."""
+    import re
     from ghost_hunter.review import render_review_markdown, run_code_review
+
+    resolved_target = target or "uncommitted"
+    if resolved_target == "staged":
+        staged = True
+    elif resolved_target not in ("uncommitted",):
+        if not commit and not branch:
+            if re.match(r"^[0-9a-fA-F]{7,40}$", resolved_target):
+                commit = resolved_target
+            else:
+                branch = resolved_target
 
     root = project_root.resolve()
     result = run_code_review(
         project_root=root,
-        target=target,
+        target=resolved_target,
         branch=branch,
         commit=commit,
         staged=staged,

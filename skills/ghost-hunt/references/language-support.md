@@ -51,29 +51,29 @@ Ghost Hunt tracks 13 individual capability flags for every language adapter:
 - **Capabilities:** Symbols, routes, callers, Pydantic schemas, SQLAlchemy models, Django models, unfinished items, AST-based duplicate detection.
 - **Limitations:** Dynamic metaclass routing and runtime `reverse()` URL resolving require execution.
 
-### JavaScript & TypeScript (`deep-static`)
+### JavaScript & TypeScript (`structural`)
 - **Frameworks:** Express, Next.js (App & Pages Routers), React, Fastify, NestJS.
-- **Parser:** Lexical and structural tokenizer scanning component trees and route files.
+- **Parser:** Structural regex and lexical scanning of component trees, API routes, and manifests.
 - **Capabilities:** App Router (`route.ts`) & Pages Router (`pages/api`), multiline JSX `<button>` and `<form>`, client API calls, unfinished items.
-- **Limitations:** Higher-order components and dynamic runtime middleware chains are approximated.
+- **Limitations:** Structural regex and lexical scanning; genuine parser-backed AST parsing is not used. Higher-order components and dynamic runtime middleware chains are approximated.
 
 ### Go (`structural`)
 - **Frameworks:** Gin, Echo, Fiber, Chi, `net/http`.
-- **Parser:** Go structural syntax tokenizer.
-- **Capabilities:** Route extraction (including group prefixes like `r.Group("/api/v1")`), exported symbols (capitalized functions/types), GORM/struct models, `panic("not implemented")` detection, `_test.go` test discovery with assertion candidates (`assert.`, `require.`, `t.Errorf`).
-- **Limitations:** Full Go compiler execution, reflection, and interface dispatching require the Go toolchain.
+- **Parser:** Structural regex and lexical scanning.
+- **Capabilities:** Route extraction (including group prefixes like `r.Group("/api/v1")`), exported symbols (capitalized functions/types), GORM/struct models, `panic("not implemented")` detection, `_test.go` test discovery with response assertion candidates.
+- **Limitations:** Structural regex and lexical scanning; genuine Go compiler AST parsing is not used. Full Go compiler execution, reflection, and interface dispatching require the Go toolchain.
 
 ### Java (`structural`)
 - **Frameworks:** Spring MVC, Spring WebFlux, JAX-RS.
-- **Parser:** Java structural annotation and class tokenizer.
+- **Parser:** Structural regex and lexical scanning for annotations and class definitions.
 - **Capabilities:** Class-level `@RequestMapping` / `@Path` prefixes, method annotations (`@GetMapping`, `@PostMapping`, `@Path`), JPA `@Entity` models, `UnsupportedOperationException` detection, JUnit `@Test` discovery.
-- **Limitations:** Dynamic Spring DI bean wiring and runtime bytecode manipulation (CGLIB) require the JVM.
+- **Limitations:** Structural regex and lexical scanning; genuine Java compiler AST is not used. Dynamic Spring DI bean wiring and runtime bytecode manipulation (CGLIB) require the JVM.
 
 ### C# (`structural`)
 - **Frameworks:** ASP.NET Core Controllers and Minimal APIs.
-- **Parser:** C# attribute and syntax tokenizer.
+- **Parser:** Structural regex and lexical scanning for attributes and syntax patterns.
 - **Capabilities:** Controller routes (`[HttpGet]`, `[Route]`), Minimal APIs (`app.MapGet`), EF Core models (`[Table]`, `DbContext`), `NotImplementedException` detection, xUnit/NUnit tests.
-- **Limitations:** Roslyn compiler execution and runtime middleware pipelines require the dotnet SDK.
+- **Limitations:** Structural regex and lexical scanning; Roslyn AST compilation is not used. Runtime middleware pipelines require the dotnet SDK.
 
 ---
 
@@ -81,23 +81,27 @@ Ghost Hunt tracks 13 individual capability flags for every language adapter:
 
 ### PHP (`structural`)
 - **Frameworks:** Laravel (`Route::get`), Symfony (`#[Route]`), Slim (`$app->get`).
+- **Parser:** Structural regex and lexical scanning.
 - **Capabilities:** Routes, Eloquent models, client calls (`Http::get`), `BadMethodCallException` detection, PHPUnit/Pest tests.
-- **Limitations:** Service container reflection requires the PHP runtime.
+- **Limitations:** Structural regex and lexical scanning; PHP parser AST is not used. Service container reflection requires the PHP runtime.
 
 ### Ruby (`structural`)
 - **Frameworks:** Rails (`routes.rb`, `resources`), Sinatra.
+- **Parser:** Structural regex and lexical scanning.
 - **Capabilities:** Route verbs and REST resource expansion, ActiveRecord models, `NotImplementedError` detection, RSpec/Minitest tests.
-- **Limitations:** Metaprogramming and `method_missing` dispatch require the Ruby VM.
+- **Limitations:** Structural regex and lexical scanning; Ripper/Prism AST parser is not used. Metaprogramming and `method_missing` dispatch require the Ruby VM.
 
 ### Rust (`structural`)
 - **Frameworks:** Axum (`.route()`), Actix Web (`#[get]`), Rocket.
+- **Parser:** Structural regex and lexical scanning.
 - **Capabilities:** Routes, structs, traits, `todo!()`/`unimplemented!()` detection, `#[test]` discovery.
-- **Limitations:** Procedural macro expansion and trait monomorphization require `rustc` / `cargo`.
+- **Limitations:** Structural regex and lexical scanning; rustc / syn AST parser is not used. Procedural macro expansion and trait monomorphization require `rustc` / `cargo`.
 
 ### Kotlin (`structural`)
 - **Frameworks:** Spring Kotlin, Ktor routing DSL.
+- **Parser:** Structural regex and lexical scanning.
 - **Capabilities:** Spring annotations, Ktor `routing { get(...) }`, data class models, `TODO()` detection, JUnit tests.
-- **Limitations:** Inline reified functions and compiler plugins require `kotlinc`.
+- **Limitations:** Structural regex and lexical scanning; Kotlin compiler PSI/FIR AST is not used. Inline reified functions and compiler plugins require `kotlinc`.
 
 ---
 
