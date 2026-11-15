@@ -36,6 +36,7 @@ from ghost_hunter.discovery.project import (
     classify_source_role,
     detect_application_boundaries,
     detect_project_context,
+    resolve_file_scope,
 )
 
 
@@ -149,6 +150,25 @@ def test_scenario_3_fixture_placeholder_does_not_pollute_application_findings(tm
     fix_finding = result["test_and_fixture_findings"]["empty_or_unfinished"][0]
     assert fix_finding["source_role"] == "fixture"
     assert fix_finding["scope"] == "test_and_fixture"
+
+
+def test_source_role_and_scope_classification_regression():
+    cases = [
+        ("tests/fixtures/example.py", "fixture", "test_and_fixture"),
+        ("tests/test_example.py", "test", "test_and_fixture"),
+        ("fixtures/example.py", "fixture", "test_and_fixture"),
+        ("__tests__/fixtures/example.ts", "fixture", "test_and_fixture"),
+        ("examples/demo.py", "example", "example"),
+        ("tests/submodule/mocks/foo.py", "fixture", "test_and_fixture"),
+        ("tests/mocks/mock_service.py", "fixture", "test_and_fixture"),
+        ("testdata/records.json", "fixture", "test_and_fixture"),
+        ("__tests__/__mocks__/api.ts", "fixture", "test_and_fixture"),
+    ]
+    for path, expected_role, expected_scope in cases:
+        role = classify_source_role(path)
+        scope = resolve_file_scope(path)["scope"]
+        assert role == expected_role, f"Failed role for {path}: got {role}, expected {expected_role}"
+        assert scope == expected_scope, f"Failed scope for {path}: got {scope}, expected {expected_scope}"
 
 
 # 4. A test function calling a route while a different function contains an assertion must not be considered verified.

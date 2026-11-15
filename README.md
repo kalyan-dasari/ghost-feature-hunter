@@ -67,13 +67,14 @@ Keep `SKILL.md`, `references/`, `templates/`, and `examples/` together in the di
 
 ## 🚀 How to Invoke in Chat
 
-Once installed, open your coding agent in your project workspace and invoke Ghost Hunt using one of its four modes:
+Once installed, open your coding agent in your project workspace and invoke Ghost Hunt using one of its five modes:
 
 | Mode | Command | What It Does |
 |---|---|---|
 | **Feature Discovery** | `/ghost-hunt discover` | Statically inspects the project, detects frameworks, maps route architecture, and presents available features without executing code. |
 | **Feature Investigation** | `/ghost-hunt investigate <feature>` | Performs deep, end-to-end data flow tracing and active verification of a specific feature across frontend, API, services, and database. |
 | **Repository Audit** | `/ghost-hunt audit` | Performs a whole-repository static audit: maps route connections, detects missing route candidates, identifies potentially unused endpoints, flags duplicate code, and discovers testing gaps. |
+| **Code Change Review** | `/ghost-hunt review [target]` | Reviews uncommitted, staged, or branch changes and surrounding call graph for broken wiring, missing validation, security risks, and test gaps. |
 | **Verification & Fix** | `/ghost-hunt verify <feature>` | Runs targeted regression checks for a previously identified defect, reviews proposed surgical fixes, and verifies fix efficacy. |
 
 *(Codex users: use `$ghost-hunt` prefix).*
@@ -93,7 +94,7 @@ You can also ask in natural language:
 
 ## 🌟 The Three Core Capabilities
 
-1. **Multi-Language Discovery & Scope Lock:** Understands project structure before selecting targets. Distinguishes monorepo workspaces and benchmark fixtures from primary application code. Declares transparent analysis capabilities for Python, JavaScript/TypeScript, and unsupported ecosystems.
+1. **Multi-Language Discovery & Scope Lock:** Understands project structure before selecting targets. Distinguishes monorepo workspaces and benchmark fixtures from primary application code. Declares transparent, honest capability levels across Python (`deep-static`), JavaScript/TypeScript (`deep-static`), Go (`structural`), Java (`structural`), C# (`structural`), PHP (`structural`), Ruby (`structural`), Rust (`structural`), Kotlin (`structural`), and foundation ecosystems (C/C++, Swift, SQL).
 2. **Individual Feature Investigation:** Traces cross-boundary data flow, isolates stateful test scenarios to prevent contamination, and validates expectations against authoritative requirement sources.
 3. **Ghost Feature Detection & Whole-Repository Audit:** Constructs a feature connection graph across 8 architectural layers to unmask disconnected features, missing routes, method mismatches, empty implementations, orphaned services, and structural code duplication.
 

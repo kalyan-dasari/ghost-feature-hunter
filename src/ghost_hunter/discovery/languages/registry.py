@@ -6,9 +6,21 @@ from pathlib import Path
 from typing import Any
 
 from ghost_hunter.discovery.languages.base import BaseLanguageAdapter
+from ghost_hunter.discovery.languages.csharp_adapter import CSharpAdapter
+from ghost_hunter.discovery.languages.go_adapter import GoAdapter
+from ghost_hunter.discovery.languages.java_adapter import JavaAdapter
 from ghost_hunter.discovery.languages.javascript_adapter import JavaScriptAdapter
+from ghost_hunter.discovery.languages.kotlin_adapter import KotlinAdapter
 from ghost_hunter.discovery.languages.models import FeatureFlagDefinition
+from ghost_hunter.discovery.languages.php_adapter import PHPAdapter
+from ghost_hunter.discovery.languages.polyglot_inventory import (
+    CFamilyAdapter,
+    SQLAdapter,
+    SwiftAdapter,
+)
 from ghost_hunter.discovery.languages.python_adapter import PythonAdapter
+from ghost_hunter.discovery.languages.ruby_adapter import RubyAdapter
+from ghost_hunter.discovery.languages.rust_adapter import RustAdapter
 from ghost_hunter.discovery.project import (
     IGNORED_DIRECTORIES,
     classify_source_role,
@@ -34,6 +46,15 @@ LANGUAGE_EXTENSIONS: dict[str, str] = {
     ".php": "PHP",
     ".rb": "Ruby",
     ".rs": "Rust",
+    ".c": "C/C++",
+    ".h": "C/C++",
+    ".cpp": "C/C++",
+    ".hpp": "C/C++",
+    ".cc": "C/C++",
+    ".cxx": "C/C++",
+    ".hh": "C/C++",
+    ".swift": "Swift",
+    ".sql": "SQL",
     ".html": "HTML",
     ".htm": "HTML",
     ".css": "CSS",
@@ -49,9 +70,21 @@ class LanguageRegistry:
         self._adapters: list[BaseLanguageAdapter] = [
             PythonAdapter(),
             JavaScriptAdapter(),
+            GoAdapter(),
+            JavaAdapter(),
+            CSharpAdapter(),
+            PHPAdapter(),
+            RubyAdapter(),
+            RustAdapter(),
+            KotlinAdapter(),
+            CFamilyAdapter(),
+            SwiftAdapter(),
+            SQLAdapter(),
         ]
         self._extension_to_adapter: dict[str, BaseLanguageAdapter] = {}
+        self._language_to_adapter: dict[str, BaseLanguageAdapter] = {}
         for adapter in self._adapters:
+            self._language_to_adapter[adapter.language] = adapter
             for ext in adapter.file_extensions:
                 self._extension_to_adapter[ext] = adapter
 
@@ -68,29 +101,70 @@ class LanguageRegistry:
     ) -> list[dict[str, Any]]:
         """Construct a transparent capability matrix for all detected languages."""
         matrix: list[dict[str, Any]] = []
+        framework_langs = {fw.get("language") for fw in detected_frameworks}
 
         # Add detected framework entries
         for fw in detected_frameworks:
-            adapter = next((a for a in self._adapters if a.language == fw.get("language")), None)
+            adapter = self._language_to_adapter.get(fw.get("language", ""))
             caps = adapter.get_capabilities() if adapter else {}
+            level = getattr(adapter, "capability_level", "structural")
             entry = {
                 "language_framework": f"{fw['language']} / {fw['framework']}",
                 "detected": True,
                 "status": fw.get("status", "supported"),
-                "analysis_capability": fw.get("analysis_capability", "Supported analysis"),
+                "capability_level": fw.get("capability_level", level),
+                "analysis_capability": fw.get("analysis_capability", f"Supported analysis for {fw['language']} ({fw['framework']})"),
                 "capabilities": fw.get("capabilities", caps),
                 "limitations": fw.get("limitations", "None specified"),
             }
             matrix.append(entry)
 
-        # Add entries for languages that were detected but have no specialized adapter
-        supported_langs = {"Python", "JavaScript/TypeScript"}
+        # For detected languages, add base entries where needed
         for lang in sorted(detected_languages):
-            if lang not in supported_langs and lang not in {"JSON", "Markdown", "CSS"}:
+            if lang in {"JSON", "Markdown", "CSS", "HTML", "Other"}:
+                continue
+
+            has_fw = lang in framework_langs
+            adapter = self._language_to_adapter.get(lang)
+
+            if adapter is not None:
+                # Always add base entry for Go (to satisfy existing capability queries), or when no framework is detected
+                if lang == "Go" or not has_fw:
+                    level = adapter.capability_level
+                    status = "supported" if level == "deep-static" else ("partial" if level == "structural" else "inventory-only")
+                    analysis_cap = (
+                        "Deep static AST analysis and symbol resolution"
+                        if level == "deep-static"
+                        else (
+                            "Structural AST analysis with file inventory and package manifest inspection"
+                            if level == "structural"
+                            else "File inventory and package manifest inspection only"
+                        )
+                    )
+                    lims = (
+                        f"Full compiler execution and dynamic reflection for {lang} are not implemented in the current engine; structural parsing is supported."
+                        if level == "structural"
+                        else (
+                            "None specified"
+                            if level == "deep-static"
+                            else f"AST parsing, route extraction, and reference graph analysis for {lang} are not implemented in the current engine."
+                        )
+                    )
+                    matrix.append({
+                        "language_framework": lang,
+                        "detected": True,
+                        "status": status,
+                        "capability_level": level,
+                        "analysis_capability": analysis_cap,
+                        "capabilities": adapter.get_capabilities(),
+                        "limitations": lims,
+                    })
+            else:
                 matrix.append({
                     "language_framework": lang,
                     "detected": True,
                     "status": "partial",
+                    "capability_level": "inventory-only",
                     "analysis_capability": "File inventory and package manifest inspection only",
                     "capabilities": {
                         "route_extraction": False,
@@ -252,17 +326,17 @@ class LanguageRegistry:
                 all_feature_flag_consumers.update(analysis.get("feature_flag_consumers", []))
 
         # Check manifests without cross-language contamination
-        has_py_manifest = (
-            (root / "pyproject.toml").is_file()
-            or (root / "setup.py").is_file()
-            or (root / "requirements.txt").is_file()
-            or any(p.name in ("pyproject.toml", "setup.py", "requirements.txt") for p in root.rglob("*.txt") if not any(part in IGNORED_DIRECTORIES for part in p.parts))
-        )
-        has_js_manifest = (
-            (root / "package.json").is_file()
-            or (root / "tsconfig.json").is_file()
-            or any(p.name == "package.json" for p in root.rglob("package.json") if not any(part in IGNORED_DIRECTORIES for part in p.parts))
-        )
+        manifest_by_lang = {
+            "Python": any((root / m).is_file() for m in ("pyproject.toml", "setup.py", "requirements.txt", "Pipfile")),
+            "JavaScript/TypeScript": any((root / m).is_file() for m in ("package.json", "tsconfig.json", "jsconfig.json")),
+            "Go": (root / "go.mod").is_file(),
+            "Java": any((root / m).is_file() for m in ("pom.xml", "build.gradle", "build.gradle.kts")),
+            "C#": bool(list(root.glob("*.csproj")) or list(root.glob("*.sln"))),
+            "PHP": (root / "composer.json").is_file(),
+            "Ruby": (root / "Gemfile").is_file(),
+            "Rust": (root / "Cargo.toml").is_file(),
+            "Kotlin": (root / "build.gradle.kts").is_file(),
+        }
 
         detected_frameworks: list[dict[str, Any]] = []
         for adapter in self._adapters:
@@ -272,12 +346,9 @@ class LanguageRegistry:
                     if f.suffix.lower() == ext:
                         relevant_files.append(f)
 
-            if adapter.language == "Python":
-                if relevant_files or has_py_manifest:
-                    detected_frameworks.extend(adapter.detect_frameworks(relevant_files, root))
-            elif adapter.language == "JavaScript/TypeScript":
-                if relevant_files or has_js_manifest:
-                    detected_frameworks.extend(adapter.detect_frameworks(relevant_files, root))
+            has_manifest = manifest_by_lang.get(adapter.language, False)
+            if relevant_files or has_manifest:
+                detected_frameworks.extend(adapter.detect_frameworks(relevant_files, root))
 
         capability_matrix = self.build_capability_matrix(detected_languages, detected_frameworks)
 

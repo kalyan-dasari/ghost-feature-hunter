@@ -58,8 +58,9 @@ For any repository:
 | `/ghost-hunt discover` | Run static architecture and boundary discovery without mutations. |
 | `/ghost-hunt investigate <feature>` | Investigate the named feature in the primary target application. |
 | `/ghost-hunt audit` | Perform whole-repository architecture, ghost feature, and connection audit. |
+| `/ghost-hunt review [target]` | Review uncommitted, staged, or branch changes and surrounding call graph. |
 | `/ghost-hunt verify <feature>` | Re-verify approved code fixes and run regression checks. |
-| `/ghost-hunt investigate` (bare) | **Do not guess a feature or pick an example app.** Display detected project context, summarize primary structure, and ask the user which feature they want to investigate or offer whole-repo audit. |
+| `/ghost-hunt investigate` (bare) | **Do not guess a feature or pick an example app.** Display detected project context, summarize primary structure, and ask the user which feature they want to investigate or offer whole-repo audit or code review. |
 
 ---
 
