@@ -387,8 +387,8 @@ def run_code_review(
 
     # 6. Unvalidated user input directly interpolated into SQL or commands
     injection_patterns = [
-        (re.compile(r"""(?:cursor\.execute|\.execute)\s*\(\s*f["'](?:SELECT|INSERT|UPDATE|DELETE)[^"']*\{"""), "raw SQL query with f-string interpolation"),
-        (re.compile(r"""(?:os\.system|subprocess\.(?:Popen|call|run))\s*\(\s*f["'][^"']*\{"""), "shell command execution with unvalidated f-string interpolation"),
+        (re.compile(r"""(?:cursor\.execute|\.execute)\s*\(\s*f(?:"[^"\n]*(?:SELECT|INSERT|UPDATE|DELETE)[^"\n]*\{|'[^'\n]*(?:SELECT|INSERT|UPDATE|DELETE)[^'\n]*\{)""", re.IGNORECASE), "raw SQL query with f-string interpolation"),
+        (re.compile(r"""(?:os\.system|subprocess\.(?:Popen|call|run))\s*\(\s*f(?:"[^"\n]*\{|'[^'\n]*\{)"""), "shell command execution with unvalidated f-string interpolation"),
     ]
     for cf in changed_files:
         p = root / cf["path"]
