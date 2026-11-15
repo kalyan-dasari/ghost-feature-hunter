@@ -25,8 +25,14 @@ What did the user invoke?
 │       ├── Audit entire project for missing routes, unused code, and duplication
 │       └── Consult references/repository-audit.md
 │
+├── "/ghost-hunt review [target]"
+│   └── Mode D: Code Change Review
+│       ├── Review uncommitted, staged, branch, or commit changes and call graph
+│       ├── Audit wiring, route/method mismatches, error handling, security, and test gaps
+│       └── Output evidence-backed findings with 7-point structure and minimal fixes
+│
 ├── "/ghost-hunt verify <feature>"
-│   └── Mode D: Post-Fix Regression Verification
+│   └── Mode E: Post-Fix Regression Verification
 │       └── Re-verify approved code fixes and test suite regressions
 │
 └── "/ghost-hunt investigate" (bare invocation, no feature specified)
@@ -35,7 +41,7 @@ What did the user invoke?
         ├── 2. Perform lightweight structural discovery
         ├── 3. DO NOT select an example, demo, or benchmark application
         ├── 4. Ask one concise question to clarify the feature to investigate
-        └── 5. Explain that whole-repository audit is available via "/ghost-hunt audit"
+        └── 5. Explain that whole-repository audit is available via "/ghost-hunt audit" and review via "/ghost-hunt review"
 ```
 
 ---

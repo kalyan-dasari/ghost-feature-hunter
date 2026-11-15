@@ -140,5 +140,54 @@ class FrameworkCapability:
     framework: str
     detected: bool
     status: str  # "supported", "partial", "inventory-only", "not detected"
+    capability_level: str = "structural"  # "deep-static", "structural", "inventory-only", "runtime-verified"
     capabilities: dict[str, bool] = field(default_factory=dict)
     limitations: list[str] = field(default_factory=list)
+    analysis_capability: str = ""
+
+
+def build_standard_capabilities(
+    *,
+    syntax_parsing: bool = False,
+    symbol_analysis: bool = False,
+    import_export_analysis: bool = False,
+    reference_analysis: bool = False,
+    route_extraction: bool = False,
+    client_call_extraction: bool = False,
+    ui_analysis: bool = False,
+    model_schema_analysis: bool = False,
+    test_discovery: bool = False,
+    test_assertion_candidates: bool = False,
+    dependency_usage_analysis: bool = False,
+    unfinished_code_detection: bool = False,
+    duplicate_detection: bool = False,
+) -> dict[str, bool]:
+    """Build a complete and standardized capabilities dictionary."""
+    return {
+        # Core standard capabilities (Section 4)
+        "syntax_parsing": syntax_parsing,
+        "symbol_analysis": symbol_analysis,
+        "import_export_analysis": import_export_analysis,
+        "reference_analysis": reference_analysis,
+        "route_extraction": route_extraction,
+        "client_call_extraction": client_call_extraction,
+        "ui_analysis": ui_analysis,
+        "model_schema_analysis": model_schema_analysis,
+        "test_discovery": test_discovery,
+        "test_assertion_candidates": test_assertion_candidates,
+        "dependency_usage_analysis": dependency_usage_analysis,
+        "unfinished_code_detection": unfinished_code_detection,
+        "duplicate_detection": duplicate_detection,
+        # Backwards-compatible aliases
+        "dependency_analysis": dependency_usage_analysis,
+        "file_identification": True,
+        "framework_identification": True,
+        "import_export_discovery": import_export_analysis,
+        "function_class_inventory": symbol_analysis,
+        "local_reference_call_analysis": reference_analysis,
+        "backend_route_extraction": route_extraction,
+        "frontend_api_call_extraction": client_call_extraction,
+        "ui_navigation_connections": ui_analysis,
+        "empty_unfinished_detection": unfinished_code_detection,
+        "dependency_package_analysis": dependency_usage_analysis,
+    }

@@ -20,6 +20,7 @@ from ghost_hunter.discovery.languages.models import (
     SymbolDefinition,
     UIAction,
     UnfinishedItem,
+    build_standard_capabilities,
 )
 from ghost_hunter.discovery.languages.python_adapter import normalize_route_path
 from ghost_hunter.discovery.project import is_example_or_fixture
@@ -64,30 +65,28 @@ class JavaScriptAdapter(BaseLanguageAdapter):
 
     @property
     def supported_frameworks(self) -> list[str]:
-        return ["Express", "Next.js", "React"]
+        return ["Express", "Next.js", "React", "Fastify", "NestJS"]
+
+    @property
+    def capability_level(self) -> str:
+        return "deep-static"
 
     def get_capabilities(self) -> dict[str, bool]:
-        return {
-            "route_extraction": True,
-            "symbol_analysis": True,
-            "ui_analysis": True,
-            "reference_analysis": True,
-            "duplicate_detection": False,  # Duplicate detection is Python AST only
-            "unfinished_code_detection": True,
-            "dependency_analysis": True,
-            # Backwards compatibility flags
-            "file_identification": True,
-            "framework_identification": True,
-            "import_export_discovery": True,
-            "function_class_inventory": True,
-            "local_reference_call_analysis": True,
-            "backend_route_extraction": True,
-            "frontend_api_call_extraction": True,
-            "ui_navigation_connections": True,
-            "test_discovery": True,
-            "empty_unfinished_detection": True,
-            "dependency_package_analysis": True,
-        }
+        return build_standard_capabilities(
+            syntax_parsing=True,
+            symbol_analysis=True,
+            import_export_analysis=True,
+            reference_analysis=True,
+            route_extraction=True,
+            client_call_extraction=True,
+            ui_analysis=True,
+            model_schema_analysis=True,
+            test_discovery=True,
+            test_assertion_candidates=True,
+            dependency_usage_analysis=True,
+            unfinished_code_detection=True,
+            duplicate_detection=False,
+        )
 
     def get_limitations(self) -> list[str]:
         return [
@@ -117,6 +116,10 @@ class JavaScriptAdapter(BaseLanguageAdapter):
                         signals["Express"] = "supported"
                     if "react" in deps:
                         signals["React"] = "supported"
+                    if "fastify" in deps:
+                        signals["Fastify"] = "supported"
+                    if "@nestjs/core" in deps or "@nestjs/common" in deps:
+                        signals["NestJS"] = "supported"
                 except Exception:
                     pass
 
@@ -132,6 +135,10 @@ class JavaScriptAdapter(BaseLanguageAdapter):
                 signals["Next.js"] = "supported"
             if "react" in content and ("from 'react'" in content or 'from "react"' in content or "React." in content):
                 signals["React"] = "supported"
+            if "fastify" in content and ("fastify" in content.lower()):
+                signals["Fastify"] = "supported"
+            if "@nestjs" in content or "nestjs" in content:
+                signals["NestJS"] = "supported"
 
         results = []
         for name, status in sorted(signals.items()):

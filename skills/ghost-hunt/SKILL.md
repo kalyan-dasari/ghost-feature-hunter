@@ -16,13 +16,14 @@ Ghost Hunt is an open-source, context-aware Agent Skill for AI coding agents. Wh
 
 ## 🧭 Investigation Modes & Invocations
 
-Ghost Hunt operates in four distinct skill modes:
+Ghost Hunt operates in five distinct skill modes:
 
 | Mode | Invocation Syntax | Purpose |
 |---|---|---|
 | **Project Discovery** | `/ghost-hunt discover` | Static architecture inventory, language capability matrix, boundary detection. Zero runtime mutations. |
 | **Feature Investigation** | `/ghost-hunt investigate <feature>` | End-to-end verification of a specific feature in the target application. |
 | **Repository-Wide Audit** | `/ghost-hunt audit` | Whole-repository audit for ghost features, empty implementations, route mismatches, unused code, and duplication. |
+| **Code Change Review** | `/ghost-hunt review [target]` | Review uncommitted, staged, branch, or commit changes and surrounding call graph for wiring defects, security risks, and test gaps. |
 | **Post-Fix Verification** | `/ghost-hunt verify <feature>` | Re-verifies approved code fixes and runs regression checks against test suites. |
 
 ### Bare Invocation Protocol (`/ghost-hunt investigate` or `/ghost-hunt`)
@@ -30,13 +31,31 @@ When invoked without a feature argument:
 1. **Identify Project Root:** Detect workspace root, Git root, and package manifests.
 2. **Display Project Context:** Report project name, primary languages, and detected application roots.
 3. **Isolate Examples & Fixtures:** Categorize `src/`, `lib/`, `app/` as primary application source; classify `examples/`, `fixtures/`, and `benchmarks/` separately. **Never silently choose an example or benchmark directory as the primary target.**
-4. **Clarify Intent:** Ask one concise question to determine which feature to investigate, while explaining that a whole-project investigation is available via `/ghost-hunt audit`.
+4. **Clarify Intent:** Ask one concise question to determine which feature to investigate, while explaining that a whole-project investigation is available via `/ghost-hunt audit`, and code review via `/ghost-hunt review`.
+
+---
+
+## 🔍 Agent-Native Investigation vs Optional CLI Engine
+
+Ghost Hunt is an **open-source, reusable Agent Skill for AI coding agents**. The optional Python CLI companion is not required to use the skill.
+
+### 1. Agent-Native Investigation (Primary Path)
+When invoked inside an AI coding agent (Antigravity, Claude Code, Codex), use native agent tools:
+- **Project & Package Bounds:** Read `package.json`, `go.mod`, `pom.xml`, `Cargo.toml`, `pyproject.toml`.
+- **Language & Framework Conventions:** Trace controllers, endpoints, models, client calls, and UI components across any language (Python, TypeScript, Go, Java, C#, PHP, Ruby, Rust, Kotlin).
+- **Test Reading & Execution:** Locate test files and run existing tests using terminal commands (`go test`, `npm test`, `cargo test`, `pytest`, `dotnet test`).
+- **Safety Standard:** Treat static test references as candidates, never as verified runtime passes.
+
+### 2. Optional Companion Python CLI
+For deterministic CI/CD and scripted automation:
+- Run `ghost-hunter discover`, `ghost-hunter audit`, `ghost-hunter audit-repo`, `ghost-hunter review`.
+- Discloses its static capability levels honestly (`deep-static`, `structural`, `inventory-only`).
 
 ---
 
 ## 📋 Mandatory Project Context & Capability Summary
 
-Every Ghost Hunt audit report must begin with this standardized block:
+Every Ghost Hunt audit or review report must begin with this standardized block:
 
 ```markdown
 ### Project Context Summary
@@ -44,16 +63,16 @@ Every Ghost Hunt audit report must begin with this standardized block:
 - **Project Root:** `<path_to_project_root>`
 - **Git Repository Root:** `<git_root_or_none>`
 - **Selected Application Root:** `<app_root>`
-- **Investigation Mode:** `<discover | investigate | audit | verify>`
+- **Investigation Mode:** `<discover | investigate | audit | review | verify>`
 - **Included Directories:** `<included_directories>`
 - **Excluded Directories:** `<excluded_directories (e.g. examples, vendor, tests)>`
 - **Available Capabilities:** `<native_tools_available (file, shell, curl, browser)>`
 - **Limitations:** `<unsupported_runtimes_or_mocked_services>`
 
 ### Language & Framework Capability Matrix
-| Language / Framework | Detected | Analysis Capability | Limitations |
-|---|---|---|---|
-| `<Language / Framework>` | Yes | `<Supported analysis | Partial | Inventory-only>` | `<Explicit limitations>` |
+| Language / Framework | Detected | Capability Level | Analysis Capability | Limitations |
+|---|---|---|---|---|
+| `<Language / Framework>` | Yes | `<deep-static | structural | inventory-only>` | `<Supported analysis>` | `<Explicit limitations>` |
 ```
 
 *(Consult [references/language-support.md](references/language-support.md) for ecosystem capability specifications).*
@@ -146,6 +165,34 @@ When invoked with `/ghost-hunt audit`, inspect the complete repository with scop
 5. **Empty & Unfinished Implementations:** Surface empty functions, placeholder handlers, unhandled exceptions, and silent error catches (excluding abstract methods, interfaces, and test mocks).
 6. **Application Boundaries & Dependency Hygiene:** Attribute package manifests to owning application roots. Distinguish runtime vs dev/test/build dependencies. Disclose unsupported dependency ecosystems (Cargo, go.mod, etc.) as inventory-only.
 7. **Structural Duplicate Logic:** Detect identical normalized function bodies across application source files without double-counting lines. *(Consult [references/repository-audit.md](references/repository-audit.md))*
+
+---
+
+## 🧐 Code Change Review Protocol (`/ghost-hunt review`)
+
+When invoked with `/ghost-hunt review [target]`, inspect modified code and its surrounding call paths:
+- **Review Targets:** Uncommitted changes (default), staged changes (`--staged`), branch comparison (`--branch <base>`), or specific commit/PR (`--commit <sha>`).
+- **Scope of Review:** Inspect not just changed lines, but all callers, routes, consumers, error paths, and regression tests affected by the change.
+- **Defects Audited:**
+  1. Broken feature wiring and disconnected data flow
+  2. Incorrect route or HTTP method usage
+  3. Missing validation and authorization
+  4. Data loss, persistence and transaction risks
+  5. Error handling and failure paths (e.g. silent catches)
+  6. Security and sensitive-data exposure (hardcoded secrets)
+  7. Performance bottlenecks and unnecessary expensive operations
+  8. Missing or weak regression tests
+  9. Duplicate implementations and avoidable dependencies
+  10. Overengineering and complexity that can be safely simplified
+- **Mandatory 7-Point Finding Structure:**
+  1. What the code currently does.
+  2. What can go wrong.
+  3. Evidence with exact file and line locations.
+  4. The likely root cause.
+  5. A minimal recommended fix.
+  6. The impact of leaving it unresolved.
+  7. Why the finding could be a false positive.
+- **Core Principles:** Reuse existing project components and utilities before introducing new abstractions. Never remove validation, error handling, accessibility, or security checks merely to reduce lines of code.
 
 ---
 

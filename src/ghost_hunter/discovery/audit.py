@@ -350,6 +350,64 @@ def _inspect_js_test_blocks(
     return (has_assertion_candidate, has_reference_candidate, has_code_mention)
 
 
+def _inspect_polyglot_test_blocks(
+    content: str,
+    route_path: str,
+    file_path: str,
+) -> tuple[bool, bool, bool]:
+    """Inspect Go, Java, C#, PHP, Ruby, Rust, and Kotlin test files for assertions and references."""
+    clean_path = route_path.strip("/")
+    path_regex = re.escape(clean_path)
+
+    # Strip line and block comments
+    stripped = re.sub(r"//.*$", "", content, flags=re.MULTILINE)
+    stripped = re.sub(r"/\*[\s\S]*?\*/", "", stripped)
+    stripped = re.sub(r"#.*$", "", stripped, flags=re.MULTILINE)
+
+    has_code_mention = bool(re.search(rf"""['"][^'"]*{path_regex}['"]""", stripped))
+    has_assertion_candidate = False
+    has_reference_candidate = False
+
+    # Extract test blocks across language conventions
+    blocks: list[str] = []
+    if file_path.endswith(".go"):
+        blocks = re.findall(r"""func\s+Test[a-zA-Z0-9_]*\s*\(t\s+\*testing\.T\)\s*\{([\s\S]*?)\n\}""", stripped)
+    elif file_path.endswith(".java") or file_path.endswith((".kt", ".kts")):
+        blocks = re.findall(r"""@Test[\s\S]*?(?:public\s+)?(?:void|fun)\s+[a-zA-Z0-9_`]+\s*\([^)]*\)\s*\{([\s\S]*?)\n\s*\}""", stripped)
+    elif file_path.endswith(".cs"):
+        blocks = re.findall(r"""\[(?:Fact|Theory|Test|TestMethod)\][\s\S]*?(?:public\s+)?(?:async\s+)?(?:void|Task)\s+[a-zA-Z0-9_]+\s*\([^)]*\)\s*\{([\s\S]*?)\n\s*\}""", stripped)
+    elif file_path.endswith(".php"):
+        blocks = re.findall(r"""(?:public\s+)?function\s+test[a-zA-Z0-9_]*\s*\([^)]*\)\s*\{([\s\S]*?)\n\s*\}""", stripped)
+        blocks.extend(re.findall(r"""(?:it|test)\s*\(\s*['"][^'"]*['"]\s*,\s*function\s*\(\)\s*\{([\s\S]*?)\n\s*\}\s*\)""", stripped))
+    elif file_path.endswith(".rb"):
+        blocks = re.findall(r"""(?:it|test)\s+['"][^'"]*['"]\s+do([\s\S]*?)\n\s*end""", stripped)
+    elif file_path.endswith(".rs"):
+        blocks = re.findall(r"""#\[(?:tokio::)?test\][\s\S]*?(?:pub\s+)?(?:async\s+)?fn\s+[a-zA-Z0-9_]+\s*\([^)]*\)\s*\{([\s\S]*?)\n\s*\}""", stripped)
+
+    if not blocks:
+        # Fallback: check whole file content if no specific function blocks matched
+        blocks = [stripped]
+
+    for block in blocks:
+        block_has_call = bool(re.search(rf"""['"][^'"]*{path_regex}['"]""", block))
+        block_has_assert = bool(
+            re.search(
+                r"""(?:assert\.|require\.|t\.Error|t\.Fatal|assertEquals|assertTrue|assertThat|Assert\.|expect\(|assert_eq!|assert!)""",
+                block,
+            )
+        )
+        if block_has_call and block_has_assert:
+            has_assertion_candidate = True
+            break
+        elif block_has_call:
+            has_reference_candidate = True
+
+    if not has_assertion_candidate and has_code_mention:
+        has_reference_candidate = True
+
+    return (has_assertion_candidate, has_reference_candidate, has_code_mention)
+
+
 def _evaluate_route_test_coverage(
     route: RouteDefinition,
     test_files_data: list[tuple[str, str]],
@@ -368,8 +426,10 @@ def _evaluate_route_test_coverage(
     for file_path, content in test_files_data:
         if file_path.endswith(".py"):
             has_assert, has_ref, has_code = _inspect_python_test_functions(content, path, func)
-        else:
+        elif file_path.endswith((".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs")):
             has_assert, has_ref, has_code = _inspect_js_test_blocks(content, path)
+        else:
+            has_assert, has_ref, has_code = _inspect_polyglot_test_blocks(content, path, file_path)
 
         if has_assert:
             any_assertion_candidate = True
@@ -953,6 +1013,36 @@ def audit_repository(project_root: Path, include_examples: bool = False) -> dict
         effective_unused_endpoints = primary_app_findings["potentially_unused_endpoints"]
         effective_uncovered = primary_app_findings["uncovered_routes"]
 
+    routes_list = [
+        {
+            "path": r.path,
+            "methods": r.methods,
+            "function": r.function,
+            "source": r.source,
+            "line": r.line,
+            "framework": r.framework,
+            "is_example": r.is_example,
+            "test_status": _evaluate_route_test_coverage(r, test_files_data),
+            "source_role": r.source_role,
+            "app_name": r.app_name,
+            "scope": r.scope,
+        }
+        for r in routes
+    ]
+    models_list = [
+        {
+            "name": m.name,
+            "source": m.source,
+            "line": m.line,
+            "framework": m.framework,
+            "is_example": m.is_example,
+            "source_role": m.source_role,
+            "app_name": m.app_name,
+            "scope": m.scope,
+        }
+        for m in scan_data.get("models", [])
+    ]
+
     return {
         "schema_version": "2.0",
         "project_context": context,
@@ -970,6 +1060,8 @@ def audit_repository(project_root: Path, include_examples: bool = False) -> dict
         "total_client_calls": len(client_calls),
         "total_components": len(scan_data.get("components", [])),
         "total_ui_actions": len(scan_data.get("ui_actions", [])),
+        "routes": routes_list,
+        "models": models_list,
         "primary_application_findings": primary_app_findings,
         "example_findings": example_findings,
         "test_and_fixture_findings": test_and_fixture_findings,

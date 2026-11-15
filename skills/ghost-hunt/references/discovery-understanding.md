@@ -24,11 +24,16 @@ Feature discovery builds a concrete map of all code assets involved in a feature
 ### Native Agent Discovery (Default)
 When using the Ghost Hunt skill in chat, inspect the project structure directly using native file search, globbing, and syntax inspection:
 
-1. **Find Routes & Endpoints:** Search for routing decorators and handlers across frameworks:
-   - Flask / FastAPI: `@app.route`, `@app.get`, `@app.post`, `@router.get`, `APIRouter()`
-   - Django: `urlpatterns = [path(...)]`, `views.py`
-   - Express / Node: `app.get()`, `app.post()`, `router.use()`
-   - Next.js: `app/api/.../route.ts`, `pages/api/...`
+1. **Find Routes & Endpoints:** Search for routing declarations and handlers across frameworks:
+   - Python: `@app.route`, `@app.get`, `@app.post`, `urlpatterns = [path(...)]`
+   - JS/TS: `app.get()`, `app.post()`, `app/**/route.ts`, `pages/api/**`
+   - Go: `r.GET()`, `r.POST()`, `http.HandleFunc()`, `group.Group("/api")`
+   - Java: `@GetMapping`, `@PostMapping`, `@RequestMapping`, `@Path`
+   - C#: `[HttpGet]`, `[HttpPost]`, `[Route]`, `app.MapGet()`, `app.MapPost()`
+   - PHP: `Route::get()`, `Route::post()`, `#[Route]`
+   - Ruby: `get '/path'`, `post '/path'`, `resources :orders`
+   - Rust: `.route("/path", get(handler))`, `#[get("/path")]`
+   - Kotlin: `@GetMapping`, `@PostMapping`, `routing { get("/path") }`
 2. **Find Models & Schema:** Search for ORM definitions:
    - SQLAlchemy / SQLModel: `class ... (Base)`, `Column(...)`, `relationship(...)`
    - Prisma: `schema.prisma`

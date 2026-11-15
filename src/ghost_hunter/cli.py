@@ -470,5 +470,43 @@ def report(
     typer.echo(f"Markdown: {destination}")
 
 
+@app.command()
+def review(
+    target: str = typer.Argument("uncommitted", help="Review target: 'uncommitted', 'staged', 'branch', or commit SHA."),
+    project_root: Path = typer.Option(Path.cwd(), "--project-root", "-p", help="Project to review."),
+    branch: Optional[str] = typer.Option(None, "--branch", "-b", help="Branch comparison target (e.g. main)."),
+    commit: Optional[str] = typer.Option(None, "--commit", "-c", help="Specific commit SHA to review."),
+    staged: bool = typer.Option(False, "--staged", help="Review staged git changes (--cached)."),
+    json_output: bool = typer.Option(False, "--json", help="Output findings as structured JSON."),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="File to write review report to."),
+) -> None:
+    """Review code changes and surrounding call graph for wiring defects, security risks, and test gaps."""
+    from ghost_hunter.review import render_review_markdown, run_code_review
+
+    root = project_root.resolve()
+    result = run_code_review(
+        project_root=root,
+        target=target,
+        branch=branch,
+        commit=commit,
+        staged=staged,
+    )
+
+    if json_output:
+        formatted = json.dumps(result, indent=2)
+        if output:
+            output.write_text(formatted, encoding="utf-8")
+        else:
+            typer.echo(formatted)
+        return
+
+    report_md = render_review_markdown(result)
+    if output:
+        output.write_text(report_md, encoding="utf-8")
+        typer.echo(f"Review report written to: {output}")
+    else:
+        typer.echo(report_md)
+
+
 if __name__ == "__main__":
     app()

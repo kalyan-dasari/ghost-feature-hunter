@@ -1,80 +1,130 @@
 # Multi-Language Detection & Capability Architecture
 
 > **Language detection is not language support.**  
-> Detecting a file extension (`.go`, `.rs`, `.java`) proves that files exist; it does not prove that deep AST, route, model, and caller analysis are supported.
-
-Ghost Hunt transparently discloses its analysis capabilities and limitations for every language present in a project.
+> Detecting a file extension (`.go`, `.rs`, `.java`, `.cs`) proves that files exist; it does not prove that deep AST, route, model, and caller analysis are supported.
+>
+> Ghost Hunt transparently discloses its analysis capabilities, capability levels, and limitations for every language present in a project.
 
 ---
 
-## 1. The Language & Framework Capability Matrix
+## 1. The Four Honest Capability Levels
 
-Every project discovery and repository audit report must begin with an explicit capability matrix:
+Ghost Hunt categorizes every ecosystem into one of four capability levels:
 
-| Language / Framework | Detected | Analysis Capability | Limitations |
+| Capability Level | Definition | Permitted Claims | Disclosed Limits |
 |---|---|---|---|
-| **Python / Flask** | Yes | Full AST route, model, caller, and unfinished detection | Dynamic decorators and runtime metaclass routing require manual verification. |
-| **Python / FastAPI** | Yes | Full AST route, Pydantic model, and unfinished detection | Dynamic dependency injection and runtime middleware require execution. |
-| **Python / Django** | Yes | Partial AST urlpatterns extraction (`path`, `re_path`, `include`), view references, and models | Dynamic class-based view dispatching, runtime `reverse()` URL resolution, and plugin-based routing require manual inspection. |
-| **JS/TS / Express** | Yes | Route extraction, middleware, client calls, and symbols | Dynamic router middleware chains and runtime mount points require inspection. |
-| **JS/TS / Next.js** | Yes | App Router / Pages Router routes, pages, and components | Dynamic catch-all routes (`[...slug]`) are normalized. |
-| **JS/TS / React** | Yes | Multiline component tags, UI buttons, handlers, form inputs | Higher-order components and complex context state updates require execution. |
-| **Other (Go, Rust, Java, etc.)**| Yes | File inventory and package manifest inspection only (inventory-only) | Deep AST route analysis and dependency usage analysis are not currently implemented; manifests are inventory-only. |
+| **`deep-static`** | Full parser-backed AST with symbols, imports, references, routes, models, and caller graph. | Statically proven symbols, callers, and syntax structures. | Dynamic runtime metaprogramming and reflection require execution. |
+| **`structural`** | Syntax-aware structural tokenizer extracting functions, structs, annotations, routes, and tests. | Static route paths, methods, symbol signatures, test files, and unfinished items. | Metaprogrammed routing, dynamic dependency injection, and compiler plugins require toolchain execution. |
+| **`inventory-only`** | File, path, and manifest identification only without syntax parsing. | Accurate file inventories and declared dependency lists. | AST parsing, route extraction, and reference graphs are not implemented in the engine. |
+| **`runtime-verified`** | A real test or verification check was executed against live uncontaminated state and observed. | Confirmed feature behavior at the executed checkpoint. | Never infer unasserted behavior or state outside the checkpoint. |
+
+> [!IMPORTANT]
+> `deep-static` and `structural` analysis NEVER imply runtime verification. A static test reference or assertion candidate is not proof that the test executed or passed.
 
 ---
 
-## 2. Core Language Adapter Capabilities
+## 2. Granular Capability Flags
 
-Language adapters declare the exact capabilities they implement:
+Ghost Hunt tracks 13 individual capability flags for every language adapter:
 
-1. **File & Language Identification:** Maps file extensions and paths to canonical languages.
-2. **Framework Identification:** Detects framework signatures from imports, package manifests, and configuration files.
-3. **Import & Export Discovery:** Maps module dependencies and exported public interfaces.
-4. **Function, Class & Component Inventory:** Catalogs definitions across the codebase.
-5. **Local Reference & Call Analysis:** Builds caller graphs to trace symbol usage and identify orphaned functions.
-6. **Backend Route Extraction:** Discovers endpoints, HTTP methods, and path parameters.
-7. **Frontend API Call Extraction:** Discovers `fetch`, `axios`, and `<form action>` requests with HTTP methods and target URLs.
-8. **UI Navigation & Component Connections:** Traces `<Link href="...">`, `<button onClick="...">`, and `<form>` submission handlers.
-9. **Test Discovery:** Identifies unit, integration, and e2e test files.
-10. **Empty & Unfinished Detection:** Detects `pass`, `NotImplementedError`, empty functions, TODO markers, and silent error swallowing.
-11. **Dependency & Package Analysis:** Cross-references declared manifest packages against actual code imports.
-
----
-
-## 3. Supported Ecosystems in the Engine
-
-### Python (Full AST Support & Partial Django)
-- **Supported Frameworks:** Flask (Full), FastAPI (Full), Django (Partial).
-- **AST Parsing:** Uses Python's standard library `ast` module (safe; application code is never imported or executed).
-- **Django Extraction:** Static AST extraction of `urlpatterns` supporting `path()`, `re_path()`, `include()`, view functions, and view classes.
-- **Route Normalization:** Standardizes `<int:id>`, `<id>`, and `{id}` to `{id}` for cross-boundary matching.
-- **Model Discovery:** Detects SQLAlchemy declarative models, Django models, and Pydantic schemas.
-- **Abstract Method Handling:** Checks for `@abstractmethod`, `abc.ABC`, and `typing.Protocol` to prevent false defect reports for intentional interface stubs.
-- **Default Return Safeguard:** Legitimate default returns (`return None`, `return False`, `return []`, `return {}`, `return ""`) are recognized as valid implementations and are never flagged as unfinished stubs.
-- **Feature Flag Detection:** Tracks `FEATURE_*`, `ENABLE_*`, and `FLAG_*` definitions and consumer conditionals.
-- **Structural Duplication Analysis:** AST-based structural duplicate detection is Python-only and preserves external function calls, operators, and constants.
-
-### JavaScript & TypeScript (Structural Parser Support)
-- **Supported Frameworks:** Express, Next.js (App & Pages Routers), React, Node.js.
-- **Structural Analysis:** Scans route declarations, React component trees, UI actions, and client requests.
-- **Next.js Conventions:**
-  - App Router: Maps `app/**/route.{ts,js}` and HTTP method exports (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`).
-  - Pages Router: Maps `pages/api/**/*.ts` default exports.
-  - UI Pages: Maps `app/**/page.tsx` and `pages/**/*.tsx` as navigation destinations.
-- **React UI Connections & Multiline Scanning:**
-  - Multiline tag scanning for `<button>` and `<form>`.
-  - Buttons with named handlers (`onClick={handleClick}` or `onClick={(e) => ...}`) are recognized as valid handlers.
-  - Buttons with `type="submit"` or enclosed in working `<form onSubmit={...}>` / `<form action="...">` are recognized as submit triggers and are never flagged as unhandled.
-  - Forms are only flagged when containing input controls without any submission handler.
-- **Feature Flag Detection:** Tracks `FEATURE_*`, `ENABLE_*`, and `FLAG_*` constants and conditional usages.
+1. `syntax_parsing`: Syntax-aware AST or token parsing (not plain regex).
+2. `symbol_analysis`: Extraction of functions, methods, classes, and exported interfaces.
+3. `import_export_analysis`: Discovery of module imports, requires, and exports.
+4. `reference_analysis`: Local caller graphs tracing function and symbol references.
+5. `route_extraction`: Backend HTTP route, controller, and handler discovery.
+6. `client_call_extraction`: Discovery of frontend `fetch`, `axios`, and HTTP client requests.
+7. `ui_analysis`: Component tree, button click handler, and form submission tracing.
+8. `model_schema_analysis`: Discovery of database models, ORM entities, and schemas.
+9. `test_discovery`: Identification of test files and test methods.
+10. `test_assertion_candidates`: Identification of response assertions within test functions.
+11. `dependency_usage_analysis`: Cross-referencing declared manifest packages against imports.
+12. `unfinished_code_detection`: Identification of stubs, `panic`, `TODO`, `pass`, and silent catches.
+13. `duplicate_detection`: AST-based structural duplicate logic detection.
 
 ---
 
-## 4. Unsupported & Partially Analyzed Languages
+## 3. Priority 1 Ecosystems (Production Analyzers)
 
-When Ghost Hunt encounters languages without full AST adapter support (e.g., Go, Rust, Java, Kotlin, C#, PHP, Ruby):
+### Python (`deep-static`)
+- **Frameworks:** Flask (Full), FastAPI (Full), Django (Partial AST).
+- **Parser:** Python standard library `ast` module (application code is never imported or executed).
+- **Capabilities:** Symbols, routes, callers, Pydantic schemas, SQLAlchemy models, Django models, unfinished items, AST-based duplicate detection.
+- **Limitations:** Dynamic metaclass routing and runtime `reverse()` URL resolving require execution.
 
-1. **Inventory Files Honestly:** Report the exact file count, primary directories, and detected manifest files (`go.mod`, `Cargo.toml`, `pom.xml`, `composer.json`).
-2. **Never Claim Unsupported Analysis:** Clearly declare the status as `partial` or `inventory-only`.
-3. **Agent Native Tool Execution:** AI coding agents in interactive mode can use native grep, file reading, and test execution tools to investigate features in any language, following the same disciplined 11-step protocol.
+### JavaScript & TypeScript (`deep-static`)
+- **Frameworks:** Express, Next.js (App & Pages Routers), React, Fastify, NestJS.
+- **Parser:** Lexical and structural tokenizer scanning component trees and route files.
+- **Capabilities:** App Router (`route.ts`) & Pages Router (`pages/api`), multiline JSX `<button>` and `<form>`, client API calls, unfinished items.
+- **Limitations:** Higher-order components and dynamic runtime middleware chains are approximated.
 
+### Go (`structural`)
+- **Frameworks:** Gin, Echo, Fiber, Chi, `net/http`.
+- **Parser:** Go structural syntax tokenizer.
+- **Capabilities:** Route extraction (including group prefixes like `r.Group("/api/v1")`), exported symbols (capitalized functions/types), GORM/struct models, `panic("not implemented")` detection, `_test.go` test discovery with assertion candidates (`assert.`, `require.`, `t.Errorf`).
+- **Limitations:** Full Go compiler execution, reflection, and interface dispatching require the Go toolchain.
+
+### Java (`structural`)
+- **Frameworks:** Spring MVC, Spring WebFlux, JAX-RS.
+- **Parser:** Java structural annotation and class tokenizer.
+- **Capabilities:** Class-level `@RequestMapping` / `@Path` prefixes, method annotations (`@GetMapping`, `@PostMapping`, `@Path`), JPA `@Entity` models, `UnsupportedOperationException` detection, JUnit `@Test` discovery.
+- **Limitations:** Dynamic Spring DI bean wiring and runtime bytecode manipulation (CGLIB) require the JVM.
+
+### C# (`structural`)
+- **Frameworks:** ASP.NET Core Controllers and Minimal APIs.
+- **Parser:** C# attribute and syntax tokenizer.
+- **Capabilities:** Controller routes (`[HttpGet]`, `[Route]`), Minimal APIs (`app.MapGet`), EF Core models (`[Table]`, `DbContext`), `NotImplementedException` detection, xUnit/NUnit tests.
+- **Limitations:** Roslyn compiler execution and runtime middleware pipelines require the dotnet SDK.
+
+---
+
+## 4. Priority 2 Ecosystems
+
+### PHP (`structural`)
+- **Frameworks:** Laravel (`Route::get`), Symfony (`#[Route]`), Slim (`$app->get`).
+- **Capabilities:** Routes, Eloquent models, client calls (`Http::get`), `BadMethodCallException` detection, PHPUnit/Pest tests.
+- **Limitations:** Service container reflection requires the PHP runtime.
+
+### Ruby (`structural`)
+- **Frameworks:** Rails (`routes.rb`, `resources`), Sinatra.
+- **Capabilities:** Route verbs and REST resource expansion, ActiveRecord models, `NotImplementedError` detection, RSpec/Minitest tests.
+- **Limitations:** Metaprogramming and `method_missing` dispatch require the Ruby VM.
+
+### Rust (`structural`)
+- **Frameworks:** Axum (`.route()`), Actix Web (`#[get]`), Rocket.
+- **Capabilities:** Routes, structs, traits, `todo!()`/`unimplemented!()` detection, `#[test]` discovery.
+- **Limitations:** Procedural macro expansion and trait monomorphization require `rustc` / `cargo`.
+
+### Kotlin (`structural`)
+- **Frameworks:** Spring Kotlin, Ktor routing DSL.
+- **Capabilities:** Spring annotations, Ktor `routing { get(...) }`, data class models, `TODO()` detection, JUnit tests.
+- **Limitations:** Inline reified functions and compiler plugins require `kotlinc`.
+
+---
+
+## 5. Foundation & Inventory Ecosystems
+
+### C and C++ (`inventory-only`)
+- **Extensions:** `.c`, `.h`, `.cpp`, `.hpp`, `.cc`, `.cxx`
+- **Capabilities:** File inventory and manifest identification.
+- **Toolchain Route:** Clang / libclang or compilation database (`compile_commands.json`).
+
+### Swift (`inventory-only`)
+- **Extensions:** `.swift`
+- **Capabilities:** File inventory and SwiftPM manifest identification.
+- **Toolchain Route:** `swift-syntax` parser or SwiftPM toolchain.
+
+### SQL (`structural` / Inventory DDL)
+- **Extensions:** `.sql`
+- **Capabilities:** Schema table discovery (`CREATE TABLE` definitions).
+- **Limitations:** Stored procedures, triggers, and dialect-specific procedural SQL require specialized database parsers.
+
+---
+
+## 6. Agent-Native Investigation Without the Python CLI
+
+When Ghost Hunt operates as an Agent Skill inside an AI coding agent:
+1. **Never Skip Languages:** The agent uses native tools (`read_file`, grep, terminal test runners) to investigate code in any language.
+2. **Read Manifests Directly:** Inspect dependencies in `go.mod`, `pom.xml`, `Cargo.toml`, `package.json`.
+3. **Trace Full-Stack Flows:** Follow handlers from entry points to database queries across language boundaries.
+4. **Execute Safe Existing Checks:** Run project tests via terminal (`go test ./...`, `dotnet test`, `mvn test`, `pytest`) when safe.
+5. **Report Honest Levels:** Distinguish static candidates from verified passes in the final report.

@@ -20,6 +20,7 @@ from ghost_hunter.discovery.languages.models import (
     SymbolDefinition,
     UIAction,
     UnfinishedItem,
+    build_standard_capabilities,
 )
 from ghost_hunter.discovery.project import is_example_or_fixture
 
@@ -56,28 +57,26 @@ class PythonAdapter(BaseLanguageAdapter):
     def supported_frameworks(self) -> list[str]:
         return ["Flask", "FastAPI", "Django"]
 
+    @property
+    def capability_level(self) -> str:
+        return "deep-static"
+
     def get_capabilities(self) -> dict[str, bool]:
-        return {
-            "route_extraction": True,
-            "symbol_analysis": True,
-            "ui_analysis": False,  # Python views generally do not contain JSX/TSX
-            "reference_analysis": True,
-            "duplicate_detection": True,  # Structural AST duplicate detection is Python-only
-            "unfinished_code_detection": True,
-            "dependency_analysis": True,
-            # Backwards compatibility flags
-            "file_identification": True,
-            "framework_identification": True,
-            "import_export_discovery": True,
-            "function_class_inventory": True,
-            "local_reference_call_analysis": True,
-            "backend_route_extraction": True,
-            "frontend_api_call_extraction": True,
-            "ui_navigation_connections": False,
-            "test_discovery": True,
-            "empty_unfinished_detection": True,
-            "dependency_package_analysis": True,
-        }
+        return build_standard_capabilities(
+            syntax_parsing=True,
+            symbol_analysis=True,
+            import_export_analysis=True,
+            reference_analysis=True,
+            route_extraction=True,
+            client_call_extraction=True,
+            ui_analysis=False,
+            model_schema_analysis=True,
+            test_discovery=True,
+            test_assertion_candidates=True,
+            dependency_usage_analysis=True,
+            unfinished_code_detection=True,
+            duplicate_detection=True,
+        )
 
     def get_limitations(self) -> list[str]:
         return [

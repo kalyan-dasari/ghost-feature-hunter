@@ -38,6 +38,11 @@ class BaseLanguageAdapter(ABC):
         """List of framework names supported by this adapter."""
         ...
 
+    @property
+    def capability_level(self) -> str:
+        """Capability level: 'deep-static', 'structural', 'inventory-only', or 'runtime-verified'."""
+        return "structural"
+
     @abstractmethod
     def get_capabilities(self) -> dict[str, bool]:
         """Map of analysis capability flags implemented by this adapter."""
