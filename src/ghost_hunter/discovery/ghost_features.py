@@ -194,10 +194,17 @@ def detect_ghost_features(
             continue
 
         if call.scope == "primary_application" or call.source_role == "application_source":
-            candidate_routes = [
-                r for r in routes
-                if r.source_role == "application_source" and r.scope == "primary_application"
-            ]
+            if call.app_name and call.app_name not in ("primary", "", "root"):
+                candidate_routes = [
+                    r for r in routes
+                    if r.source_role == "application_source"
+                    and (r.app_name == call.app_name or r.app_name in ("primary", "", "root") or (call.target_service and call.target_service == r.app_name))
+                ]
+            else:
+                candidate_routes = [
+                    r for r in routes
+                    if r.source_role == "application_source" and r.scope == "primary_application"
+                ]
         elif call.scope == "example":
             candidate_routes = [
                 r for r in routes
@@ -216,6 +223,16 @@ def detect_ghost_features(
         ]
 
         if not matching_routes:
+            # Check if route exists in an unrelated application in a monorepo
+            other_app_routes = [
+                r for r in routes
+                if r.source_role == "application_source" and match_route(endpoint, r.path)
+            ]
+            other_app_note = ""
+            if other_app_routes:
+                other_names = sorted({r.app_name for r in other_app_routes if r.app_name})
+                other_app_note = f" (Route exists in separate application(s): {', '.join(other_names)}, but not in '{call.app_name}')"
+
             if has_reverse_proxy:
                 call.call_type = "reverse_proxy_candidate"
                 ghost_candidates.append({
@@ -225,7 +242,7 @@ def detect_ghost_features(
                     "severity": "Low",
                     "confidence": "Low",
                     "finding_state": "Requires Owner Confirmation",
-                    "evidence": call.raw,
+                    "evidence": f"{call.raw}{other_app_note}",
                     "source": call.source,
                     "line": call.line,
                     "source_role": call.source_role,
@@ -236,9 +253,9 @@ def detect_ghost_features(
                         "Reverse proxy or gateway configuration exists in project",
                     ],
                     "missing_links": [
-                        f"No local backend route registered for '{endpoint}'"
+                        f"No local backend route registered for '{endpoint}' in application '{call.app_name or 'primary'}'"
                     ],
-                    "explanation": f"Client calls '{req_method} {endpoint}', which has no matching local route but may be proxied upstream by reverse proxy configuration.",
+                    "explanation": f"Client calls '{req_method} {endpoint}', which has no matching local route in '{call.app_name or 'primary'}' but may be proxied upstream by reverse proxy configuration.{other_app_note}",
                     "potential_impact": "Request may succeed via proxy or fail if proxy rules are missing.",
                     "why_false_positive": "Endpoint is forwarded to an upstream service by reverse proxy.",
                     "recommended_action": "Verify upstream proxy destination.",
@@ -249,8 +266,8 @@ def detect_ghost_features(
                     "category": "ghost_feature_candidate",
                     "chain_stage": "Client API Request -> Backend Route",
                     "severity": "High",
-                    "confidence": "Medium",
-                    "evidence": call.raw,
+                    "confidence": "High" if not other_app_routes else "Medium",
+                    "evidence": f"{call.raw}{other_app_note}",
                     "source": call.source,
                     "line": call.line,
                     "source_role": call.source_role,
@@ -260,12 +277,12 @@ def detect_ghost_features(
                         f"Client requests '{req_method} {endpoint}' in {call.source}:{call.line}"
                     ],
                     "missing_links": [
-                        f"No backend route registered for '{endpoint}'"
+                        f"No backend route registered for '{endpoint}' in application '{call.app_name or 'primary'}'"
                     ],
-                    "explanation": f"Client calls '{req_method} {endpoint}', but no backend route handler exists for this path.",
+                    "explanation": f"Client calls '{req_method} {endpoint}', but no backend route handler exists for this path in '{call.app_name or 'primary'}'.{other_app_note}",
                     "potential_impact": "Runtime request will fail with HTTP 404.",
                     "why_false_positive": "Endpoint may be served by an external microservice or dynamic proxy.",
-                    "recommended_action": "Verify if the route is hosted in another service or implement the missing endpoint.",
+                    "recommended_action": f"Verify if the route is hosted in another service or implement the missing endpoint in '{call.app_name or 'primary'}'.",
                 })
         else:
             local_matches = [r for r in matching_routes if r.app_name == call.app_name]
