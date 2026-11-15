@@ -561,6 +561,158 @@ app.get('/express-route', (req, res) => res.json({express: true}));
     assert "/express-route" in route_paths
 
 
+# 17. Capability matrix truthfulness: only AST syntax-parsing adapters can advertise deep-static
+def test_scenario_17_capability_matrix_truthfulness():
+    from ghost_hunter.discovery.languages.csharp_adapter import CSharpAdapter
+    from ghost_hunter.discovery.languages.go_adapter import GoAdapter
+    from ghost_hunter.discovery.languages.java_adapter import JavaAdapter
+    from ghost_hunter.discovery.languages.javascript_adapter import JavaScriptAdapter
+    from ghost_hunter.discovery.languages.kotlin_adapter import KotlinAdapter
+    from ghost_hunter.discovery.languages.php_adapter import PHPAdapter
+    from ghost_hunter.discovery.languages.python_adapter import PythonAdapter
+    from ghost_hunter.discovery.languages.ruby_adapter import RubyAdapter
+    from ghost_hunter.discovery.languages.rust_adapter import RustAdapter
+
+    adapters = [
+        PythonAdapter(),
+        JavaScriptAdapter(),
+        GoAdapter(),
+        JavaAdapter(),
+        CSharpAdapter(),
+        PHPAdapter(),
+        RubyAdapter(),
+        RustAdapter(),
+        KotlinAdapter(),
+    ]
+
+    for adapter in adapters:
+        caps = adapter.get_capabilities()
+        level = adapter.capability_level
+        # Only true AST syntax parsers can be deep-static
+        if not caps["syntax_parsing"]:
+            assert level != "deep-static", f"{adapter.language} cannot declare deep-static without parser syntax_parsing"
+            assert level in ("structural", "inventory-only")
+        else:
+            assert adapter.language == "Python", "Only Python currently implements genuine AST syntax_parsing"
+            assert level == "deep-static"
+
+    # Verify build_capability_matrix enforces this rule
+    registry = LanguageRegistry()
+    matrix = registry.build_capability_matrix({"Python", "JavaScript/TypeScript", "Go", "Java"}, [
+        {"language": "Python", "framework": "Flask", "status": "supported"},
+        {"language": "JavaScript/TypeScript", "framework": "Express", "status": "supported"},
+    ])
+    matrix_by_target = {m["language_framework"]: m for m in matrix}
+    assert matrix_by_target["Python / Flask"]["capability_level"] == "deep-static"
+    assert matrix_by_target["JavaScript/TypeScript / Express"]["capability_level"] == "structural"
+    assert matrix_by_target["Go"]["capability_level"] == "structural"
+    assert matrix_by_target["Java"]["capability_level"] == "structural"
+
+
+# 18. Polyglot test and fixture source classification in application directories
+def test_scenario_18_polyglot_test_and_fixture_classification_in_app_directories():
+    polyglot_test_paths = [
+        "src/handlers/user_test.go",
+        "app/service/UserServiceTest.java",
+        "src/OrderTests.java",
+        "src/TestCase.java",
+        "app/PaymentTests.cs",
+        "src/CartTest.cs",
+        "src/tests/UserTest.php",
+        "app/api/user.spec.php",
+        "app/services/user_spec.rb",
+        "src/models/user_test.rb",
+        "src/checkout_test.rs",
+        "src/tests.rs",
+        "src/service/UserTest.kt",
+        "src/service/UserSpec.kt",
+    ]
+    for p in polyglot_test_paths:
+        role = classify_source_role(p)
+        assert role == "test", f"Expected 'test' for {p}, got '{role}'"
+        scope_info = resolve_file_scope(p)
+        assert scope_info["scope"] == "test_and_fixture"
+
+    polyglot_fixture_paths = [
+        "src/fixtures/MockPaymentService.java",
+        "app/mocks/user_mock.go",
+        "src/OrderMock.cs",
+        "src/testdata/payload.json",
+        "src/fixtures/mock_server.py",
+    ]
+    for p in polyglot_fixture_paths:
+        role = classify_source_role(p)
+        assert role == "fixture", f"Expected 'fixture' for {p}, got '{role}'"
+        scope_info = resolve_file_scope(p)
+        assert scope_info["scope"] == "test_and_fixture"
+
+    # Non-test code files must not be falsely classified as tests
+    non_tests = ["src/Contest.java", "src/Attest.java", "src/Latest.cs", "src/main.go", "src/user.rb"]
+    for p in non_tests:
+        role = classify_source_role(p)
+        assert role == "application_source", f"Expected 'application_source' for {p}, got '{role}'"
+
+
+# 19. Prevent cross-scope and cross-application route contamination (Example & Test routes)
+def test_scenario_19_prevent_cross_scope_route_contamination(tmp_path: Path):
+    # Primary application has a client call to /api/v1/payment, but NO backend route for it
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "app.py").write_text(
+        """from flask import Flask
+app = Flask(__name__)
+@app.route('/api/v1/health')
+def health():
+    return 'ok'
+""",
+        encoding="utf-8",
+    )
+    (src_dir / "client.js").write_text(
+        """async function makePayment() {
+    return await fetch('/api/v1/payment', { method: 'POST' });
+}
+""",
+        encoding="utf-8",
+    )
+
+    # An EXAMPLE application in examples/demo_app contains the /api/v1/payment route
+    example_dir = tmp_path / "examples" / "demo_app"
+    example_dir.mkdir(parents=True)
+    (example_dir / "server.py").write_text(
+        """from flask import Flask
+app = Flask(__name__)
+@app.route('/api/v1/payment', methods=['POST'])
+def example_pay():
+    return {'status': 'example_paid'}
+""",
+        encoding="utf-8",
+    )
+
+    # A TEST FIXTURE in tests/fixtures contains /api/v1/mock-gateway
+    fixture_dir = tmp_path / "tests" / "fixtures"
+    fixture_dir.mkdir(parents=True)
+    (fixture_dir / "mock_gateway.py").write_text(
+        """from flask import Flask
+app = Flask(__name__)
+@app.route('/api/v1/mock-gateway', methods=['POST'])
+def mock_gw():
+    return {'status': 'mocked'}
+""",
+        encoding="utf-8",
+    )
+
+    result = audit_repository(tmp_path)
+
+    # The primary application's call to /api/v1/payment MUST NOT be satisfied by the example route
+    missing = [c for c in result["primary_application_findings"]["missing_route_candidates"] if c["endpoint"] == "/api/v1/payment"]
+    assert len(missing) >= 1, "Primary application call to /api/v1/payment was erroneously satisfied by example app route"
+    assert missing[0]["endpoint"] == "/api/v1/payment"
+
+    # Ghost features detection must also flag this as a missing route defect in primary application
+    ghost_routes = [g for g in result["ghost_features"] if "/api/v1/payment" in g.get("evidence", "")]
+    assert len(ghost_routes) >= 1, "Ghost feature detection failed to report missing route /api/v1/payment"
+
+
 # 16. The skill mirror remains exactly synchronized.
 def test_scenario_16_skill_mirror_remains_exactly_synchronized():
     repo_root = Path(__file__).resolve().parent.parent.parent

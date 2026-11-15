@@ -598,7 +598,7 @@ func TestPathConst(t *testing.T) {
     assert has_assert is False
     assert has_code is True
 
-    route = RouteDefinition(path="/api/v1/items", methods=["GET"], handler="listItems", source="main.go", line=10)
+    route = RouteDefinition(path="/api/v1/items", methods=["GET"], function="listItems", source="main.go", line=10, framework="Go")
     cov_status = _evaluate_route_test_coverage(route, [("handler_test.go", go_content)])
     assert cov_status == "test_reference_candidate"
     assert cov_status != "test_verified"
@@ -626,7 +626,7 @@ func TestUnrelatedAssert(t *testing.T) {
     assert has_assert is False
     assert has_ref is True
 
-    route = RouteDefinition(path="/api/v1/items", methods=["GET"], handler="listItems", source="main.go", line=10)
+    route = RouteDefinition(path="/api/v1/items", methods=["GET"], function="listItems", source="main.go", line=10, framework="Go")
     cov_status = _evaluate_route_test_coverage(route, [("handler_test.go", go_content)])
     assert cov_status == "test_reference_candidate"
     assert cov_status != "test_verified"
@@ -657,7 +657,7 @@ public class OrderControllerTest {
     assert has_assert is False
     assert has_ref is True
 
-    route = RouteDefinition(path="/api/v1/items", methods=["GET"], handler="listItems", source="main.java", line=10)
+    route = RouteDefinition(path="/api/v1/items", methods=["GET"], function="listItems", source="main.java", line=10, framework="Java")
     cov_status = _evaluate_route_test_coverage(route, [("OrderControllerTest.java", java_content)])
     assert cov_status == "test_reference_candidate"
     assert cov_status != "test_verified"
@@ -685,7 +685,7 @@ func TestRealRequestAndResponse(t *testing.T) {
     has_assert, has_ref, has_code = _inspect_polyglot_test_blocks(go_content, "/api/v1/items", "handler_test.go")
     assert has_assert is True
 
-    route = RouteDefinition(path="/api/v1/items", methods=["GET"], handler="listItems", source="main.go", line=10)
+    route = RouteDefinition(path="/api/v1/items", methods=["GET"], function="listItems", source="main.go", line=10, framework="Go")
     cov_status = _evaluate_route_test_coverage(route, [("handler_test.go", go_content)])
     assert cov_status == "test_assertion_candidate"
     assert cov_status != "test_verified"
@@ -714,7 +714,7 @@ public class ApiTests {
     has_assert, has_ref, has_code = _inspect_polyglot_test_blocks(cs_content, "/api/v1/items", "ApiTests.cs")
     assert has_assert is True
 
-    route = RouteDefinition(path="/api/v1/items", methods=["GET"], handler="listItems", source="controller.cs", line=10)
+    route = RouteDefinition(path="/api/v1/items", methods=["GET"], function="listItems", source="controller.cs", line=10, framework="C#")
     cov_status = _evaluate_route_test_coverage(route, [("ApiTests.cs", cs_content)])
     assert cov_status == "test_assertion_candidate"
     assert cov_status != "test_verified"
@@ -740,7 +740,7 @@ class ItemTest extends TestCase {
     assert has_ref is False
     assert has_code is False
 
-    route = RouteDefinition(path="/api/v1/items", methods=["GET"], handler="listItems", source="routes.php", line=10)
+    route = RouteDefinition(path="/api/v1/items", methods=["GET"], function="listItems", source="routes.php", line=10, framework="PHP")
     cov_status = _evaluate_route_test_coverage(route, [("ItemTest.php", php_content)])
     assert cov_status == "testing_gap_candidate"
     assert cov_status != "test_verified"
@@ -764,7 +764,7 @@ end
     assert has_ref is False
     assert has_code is False
 
-    route = RouteDefinition(path="/api/v1/items", methods=["GET"], handler="listItems", source="routes.rb", line=10)
+    route = RouteDefinition(path="/api/v1/items", methods=["GET"], function="listItems", source="routes.rb", line=10, framework="Ruby")
     cov_status = _evaluate_route_test_coverage(route, [("items_spec.rb", ruby_content)])
     assert cov_status == "testing_gap_candidate"
     assert cov_status != "test_verified"
@@ -784,7 +784,7 @@ def test_polyglot_route_coverage_scenario_8_test_files_with_unsupported_syntax()
     has_assert, has_ref, has_code = _inspect_polyglot_test_blocks(rust_content, "/api/v1/items", "test.rs")
     assert has_assert is False
 
-    route = RouteDefinition(path="/api/v1/items", methods=["GET"], handler="listItems", source="lib.rs", line=10)
+    route = RouteDefinition(path="/api/v1/items", methods=["GET"], function="listItems", source="lib.rs", line=10, framework="Rust")
     cov_status = _evaluate_route_test_coverage(route, [("test.rs", rust_content)])
     # Conservative fallback: either testing_gap_candidate or test_reference_candidate, NEVER test_assertion_candidate or test_verified
     assert cov_status != "test_assertion_candidate"
