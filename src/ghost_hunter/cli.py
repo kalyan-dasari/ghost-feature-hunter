@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from ghost_hunter.adapters.base import AdapterContext
 from ghost_hunter.config import HunterConfig, load_config, write_default_config
 from ghost_hunter.discovery.flask import discover_project, write_discovery
-from ghost_hunter.journeys.loader import load_journey
+from ghost_hunter.journeys import generate_feature_journey, load_journey
 from ghost_hunter.models import AuditReport
 from ghost_hunter.reporting.render import render_markdown, write_report
 from ghost_hunter.runner import run_journey
@@ -572,6 +572,44 @@ def connection_map_cmd(
         typer.echo(f"Map written to: {output}")
     else:
         typer.echo(text_out)
+
+
+@app.command(name="plan")
+def plan(
+    feature: str = typer.Argument(..., help="Feature or route name to plan a verification journey for."),
+    project_root: Path = typer.Option(Path.cwd(), "--project-root", "-p", help="Project root to inspect."),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Custom output path for journey JSON (defaults to journeys/<feature>.json)."),
+    base_url: str = typer.Option("http://127.0.0.1:5000", "--base-url", help="Base URL for HTTP journey steps."),
+) -> None:
+    """Plan an explicit verification journey for a feature based on static connection map analysis."""
+    root = project_root.resolve()
+    clean_feature = feature.strip()
+    if not clean_feature:
+        raise typer.BadParameter("Feature name must not be empty.")
+
+    journey = generate_feature_journey(root, feature=clean_feature, base_url=base_url)
+
+    if output:
+        out_path = output if output.is_absolute() else (root / output).resolve()
+    else:
+        safe_name = re.sub(r"[^a-zA-Z0-9_.-]+", "-", clean_feature).strip("-.") or "journey"
+        out_path = root / "journeys" / f"{safe_name}.json"
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(journey.model_dump(), indent=2) + "\n", encoding="utf-8")
+
+    adapters_count: dict[str, int] = {}
+    sources_count: dict[str, int] = {}
+    for step in journey.steps:
+        adapters_count[step.adapter.value] = adapters_count.get(step.adapter.value, 0) + 1
+        sources_count[step.source_of_expectation] = sources_count.get(step.source_of_expectation, 0) + 1
+
+    typer.echo(f"Generated journey for feature '{clean_feature}':")
+    typer.echo(f"- Steps generated: {len(journey.steps)}")
+    typer.echo(f"- Adapters: {', '.join(f'{k}: {v}' for k, v in sorted(adapters_count.items()))}")
+    typer.echo(f"- Sources of expectation: {', '.join(f'{k}: {v}' for k, v in sorted(sources_count.items()))}")
+    typer.echo(f"- Journey file saved to: {out_path}")
+    typer.echo(f"\nTo audit this feature run:\n  ghost-hunter audit {out_path.stem} -p {root}")
 
 
 if __name__ == "__main__":
