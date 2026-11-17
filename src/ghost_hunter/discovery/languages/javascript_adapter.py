@@ -317,8 +317,16 @@ class JavaScriptAdapter(BaseLanguageAdapter):
             r"""(?:axios|api|client)\s*\(\s*['"]([^'"]+)['"](?:\s*,\s*\{[^}]*?method\s*:\s*['"]([a-zA-Z]+)['"])?""",
             re.IGNORECASE | re.DOTALL,
         )
+        func_start_pattern = re.compile(
+            r"""(?:(?:async\s+)?function\s+([a-zA-Z0-9_]+)|(?:const|let|var)\s+([a-zA-Z0-9_]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[a-zA-Z0-9_]+)\s*=>)"""
+        )
 
+        current_caller = ""
         for line_num, line in enumerate(lines, 1):
+            f_match = func_start_pattern.search(line)
+            if f_match:
+                current_caller = f_match.group(1) or f_match.group(2) or ""
+
             # fetch
             for m in fetch_pattern.finditer(line):
                 url = m.group(1)
@@ -331,6 +339,7 @@ class JavaScriptAdapter(BaseLanguageAdapter):
                         line=line_num,
                         raw=line.strip(),
                         framework="fetch",
+                        caller_function=current_caller,
                     ))
             # axios.get / axios.post
             for m in axios_method_pattern.finditer(line):
@@ -344,6 +353,7 @@ class JavaScriptAdapter(BaseLanguageAdapter):
                         line=line_num,
                         raw=line.strip(),
                         framework="axios",
+                        caller_function=current_caller,
                     ))
             # axios(url, {method})
             for m in axios_call_pattern.finditer(line):
@@ -357,6 +367,7 @@ class JavaScriptAdapter(BaseLanguageAdapter):
                         line=line_num,
                         raw=line.strip(),
                         framework="axios",
+                        caller_function=current_caller,
                     ))
             # HTML form action
             form_action_match = re.search(r"""<form[^>]*\baction\s*=\s*['"]([^'"]+)['"](?:[^>]*\bmethod\s*=\s*['"]([a-zA-Z]+)['"])?""", line, re.IGNORECASE)
@@ -465,10 +476,19 @@ class JavaScriptAdapter(BaseLanguageAdapter):
                     why_intentional="May be a UI mockup or placeholder waiting for backend integration.",
                 ))
             elif has_click_attr:
+                callback_match = re.search(r"""onClick\s*=\s*\{(?:\(\s*.*?\s*\)\s*=>\s*)?([a-zA-Z0-9_]+)(?:\s*\([^)]*\))?\s*\}""", btn_attrs)
+                fetch_in_click = re.search(r"""fetch\s*\(\s*['"]([^'"]+)['"]""", btn_attrs)
+                if fetch_in_click:
+                    click_target = fetch_in_click.group(1)
+                elif callback_match:
+                    click_target = callback_match.group(1)
+                else:
+                    click_target = "handler"
+
                 ui_actions.append(UIAction(
                     action_type="button",
                     label=label,
-                    target="handler",
+                    target=click_target,
                     source=rel_path,
                     line=line_num,
                     raw=content[start_pos:min(start_pos + 150, btn_end)].strip(),
