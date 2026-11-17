@@ -275,7 +275,7 @@ def generate_feature_connection_map(
                     ConnectionEdge(
                         source_id=u_node.id,
                         target_id=node.id,
-                        link_type="ui_to_client",
+                        link_type="named_callback" if is_callback_match else "ui_to_client",
                         status="CONNECTED" if u_node.status == "CONNECTED" else "BROKEN",
                         description=f"UI element invokes {call.method} {call.path}" + (f" via '{call.caller_function}()'" if is_callback_match else ""),
                     )
@@ -637,24 +637,43 @@ def generate_feature_connection_map(
 
         # --- Layer 6: Database / Model Tracing ---
         db_parent_id = service_node_id if service_node_id else ctrl_node_id
-        matched_models = [m.name for m in models if m.name.lower() in handler_text.lower()]
 
-        if mutations or queries or matched_models:
+        # Check both handler_text and any called service implementations for model & db queries/mutations
+        combined_db_text = handler_text
+        if called_services:
+            for s_call in called_services:
+                base_s_name = s_call.split(".")[-1]
+                matching_syms = symbols_by_name.get(base_s_name, [])
+                for sym in matching_syms:
+                    service_file = root / sym.source
+                    if service_file.is_file():
+                        try:
+                            combined_db_text += "\n" + service_file.read_text(encoding="utf-8", errors="ignore")
+                        except OSError:
+                            pass
+
+        matched_models = [m.name for m in models if m.name.lower() in combined_db_text.lower()]
+        svc_mutations = re.findall(r"""(?:\.add\(|\.delete\(|\.update\(|\.insert\(|\.save\()""", combined_db_text)
+        svc_queries = re.findall(r"""(?:\.query|\.filter\(|\.filter_by\(|\.find|\.get\(|\.all\(|\.first\()""", combined_db_text)
+        all_mutations = list(set(mutations + svc_mutations))
+        all_queries = list(set(queries + svc_queries))
+
+        if all_mutations or all_queries or matched_models:
             db_node_id = f"db_{r_node.id}"
-            has_db_risk = len(mutations) >= 2 and not has_tx
+            has_db_risk = len(all_mutations) >= 2 and not has_tx
             db_status = "BROKEN" if has_db_risk else "CONNECTED"
             model_summary = f"Models: {', '.join(matched_models[:3])}" if matched_models else "DB Operations"
             nodes.append(
                 ConnectionNode(
                     id=db_node_id,
                     layer="database",
-                    name=f"{model_summary} ({len(mutations)} writes, {len(queries)} reads)",
+                    name=f"{model_summary} ({len(all_mutations)} writes, {len(all_queries)} reads)",
                     source_file=r_node.source_file,
                     line=r_node.line,
                     status=db_status,
                     details={
-                        "mutation_count": len(mutations),
-                        "query_count": len(queries),
+                        "mutation_count": len(all_mutations),
+                        "query_count": len(all_queries),
                         "has_transaction": has_tx,
                         "models": matched_models,
                     },
@@ -666,7 +685,7 @@ def generate_feature_connection_map(
                     target_id=db_node_id,
                     link_type="service_to_db" if service_node_id else "controller_to_db",
                     status=db_status,
-                    description=f"Modifies database state ({len(mutations)} writes)",
+                    description=f"Modifies database state ({len(all_mutations)} writes, {len(all_queries)} reads)",
                     contract_issues=["Missing atomic transaction wrapper on multiple mutations"] if has_db_risk else [],
                 )
             )

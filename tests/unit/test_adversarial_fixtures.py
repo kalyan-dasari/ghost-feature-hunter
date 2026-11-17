@@ -1,6 +1,6 @@
 """Adversarial regression test suite for Ghost Hunt.
 
-Validates the 10 critical reliability scenarios:
+Validates the 20 critical reliability scenarios:
 1. HTTP Method Mismatch Detection
 2. Cross-Application Route Boundary Isolation (Monorepo)
 3. Passive Test Mention Rejection (No false positive test_assertion_candidate)
@@ -11,6 +11,16 @@ Validates the 10 critical reliability scenarios:
 8. Unprotected Multi-Mutation in File with Unrelated Transaction (No false negative)
 9. Injection Risk Calibration (Proven untrusted user input vs internal pattern)
 10. Feature Connection Map End-to-End Tracing & Gap Detection
+11. Full 8-Layer Feature Path Tracing with Evidence Across All Tiers
+12. Missing Service Implementation Detection (Handler invokes undefined business service)
+13. Unfinished Service Implementation Detection (Handler invokes stubbed service)
+14. Database Operation Reached Through Service Layer
+15. Response Serialization & Unconsumed Client Response Detection
+16. UI Named Callback Event Handler Tracing
+17. Global Middleware-Based Authorization Recognition
+18. Static Graph Never Implies Runtime PASS (Strict unknown/fail enforcement)
+19. Mermaid Diagram Structural Consistency Across 8 Layers
+20. Target Feature Filtering Precision (Isolates targeted paths, suppresses unrelated routes)
 """
 
 from __future__ import annotations
@@ -21,7 +31,10 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from ghost_hunter.adapters.base import AdapterContext
+from ghost_hunter.adapters.http import HTTPAdapter
 from ghost_hunter.cli import app
+from ghost_hunter.config import HunterConfig
 from ghost_hunter.discovery.audit import (
     _evaluate_route_test_coverage,
     _inspect_polyglot_test_blocks,
@@ -33,6 +46,8 @@ from ghost_hunter.discovery.connection_map import (
     render_mermaid_diagram,
 )
 from ghost_hunter.discovery.languages.models import RouteDefinition
+from ghost_hunter.journeys.generator import generate_feature_journey
+from ghost_hunter.models import Journey, Status
 from ghost_hunter.review import render_review_markdown, run_code_review
 
 
@@ -403,3 +418,337 @@ def get_orders():
     res = runner.invoke(app, ["map", "-p", str(tmp_path)])
     assert res.exit_code == 0
     assert "Feature Connection Map" in res.stdout
+
+
+# ==============================================================================
+# Scenario 11: Full 8-Layer Feature Path Tracing
+# ==============================================================================
+def test_scenario_11_full_8_layer_feature_path(tmp_path: Path):
+    """Verifies that an end-to-end connected feature touches all 8 layers:
+    UI -> Client API -> Route -> Controller -> Service -> Database -> Response -> Test.
+    """
+    src = tmp_path / "src"
+    src.mkdir()
+    tests = tmp_path / "tests"
+    tests.mkdir()
+
+    # Layer 3 (Route), Layer 4 (Controller), Layer 7 (Response)
+    (src / "app.py").write_text(
+        """from flask import Flask, jsonify
+from services import charge_payment
+app = Flask(__name__)
+
+@app.route('/api/pay', methods=['POST'])
+def pay_endpoint():
+    charge_payment()
+    return jsonify({'status': 'charged'}), 200
+""",
+        encoding="utf-8",
+    )
+
+    # Layer 5 (Service), Layer 6 (Database)
+    (src / "services.py").write_text(
+        """from models import Order
+def charge_payment():
+    Order.query.filter_by(status='pending').all()
+""",
+        encoding="utf-8",
+    )
+    (src / "models.py").write_text(
+        """class Order(Base):
+    pass
+""",
+        encoding="utf-8",
+    )
+
+    # Layer 1 (UI), Layer 2 (Client API)
+    (src / "Checkout.jsx").write_text(
+        """export function CheckoutForm() {
+    async function handlePay() {
+        const res = await fetch('/api/pay', { method: 'POST' });
+        const data = await res.json();
+        return data;
+    }
+    return <button onClick={handlePay}>Confirm Payment</button>;
+}
+""",
+        encoding="utf-8",
+    )
+
+    # Layer 8 (Test)
+    (tests / "test_pay.py").write_text(
+        """def test_pay_flow(client):
+    res = client.post('/api/pay')
+    assert res.status_code == 200
+""",
+        encoding="utf-8",
+    )
+
+    conn_map = generate_feature_connection_map(tmp_path)
+    layers = {n["layer"] for n in conn_map["nodes"]}
+    expected_layers = {"ui", "client_api", "route", "controller", "service", "database", "response", "test"}
+    assert expected_layers.issubset(layers), f"Missing layers: {expected_layers - layers}"
+
+
+# ==============================================================================
+# Scenario 12: Missing Service Implementation Detection
+# ==============================================================================
+def test_scenario_12_missing_service_detection(tmp_path: Path):
+    """Controller invokes a service function that is never declared anywhere."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "app.py").write_text(
+        """from flask import Flask, jsonify
+app = Flask(__name__)
+
+@app.route('/api/inventory/reserve', methods=['POST'])
+def reserve():
+    reserve_inventory_stock()
+    return jsonify({'status': 'reserved'})
+""",
+        encoding="utf-8",
+    )
+
+    conn_map = generate_feature_connection_map(tmp_path)
+    findings = [f for f in conn_map["contract_findings"] if f["category"] == "missing_service"]
+    assert len(findings) >= 1
+    assert "reserve_inventory_stock" in findings[0]["message"]
+    assert findings[0]["severity"] == "High"
+
+
+# ==============================================================================
+# Scenario 13: Unfinished Service Implementation Detection
+# ==============================================================================
+def test_scenario_13_unfinished_service_detection(tmp_path: Path):
+    """Controller calls a declared service whose body is a NotImplementedError stub."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "app.py").write_text(
+        """from flask import Flask, jsonify
+from services import process_refund
+app = Flask(__name__)
+
+@app.route('/api/refund', methods=['POST'])
+def refund_route():
+    process_refund()
+    return jsonify({'status': 'refunded'})
+""",
+        encoding="utf-8",
+    )
+    (src / "services.py").write_text(
+        """def process_refund():
+    raise NotImplementedError("TODO: Implement payment gateway refund call")
+""",
+        encoding="utf-8",
+    )
+
+    conn_map = generate_feature_connection_map(tmp_path)
+    findings = [f for f in conn_map["contract_findings"] if f["category"] == "unfinished_service"]
+    assert len(findings) >= 1
+    assert "process_refund" in findings[0]["message"]
+    assert findings[0]["severity"] == "High"
+
+
+# ==============================================================================
+# Scenario 14: Database Operation Reached Through Service Layer
+# ==============================================================================
+def test_scenario_14_database_operation_via_service(tmp_path: Path):
+    """Route controller invokes service, which in turn queries/mutates the database model."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "app.py").write_text(
+        """from flask import Flask, jsonify
+from services import create_order_service
+app = Flask(__name__)
+
+@app.route('/api/orders', methods=['POST'])
+def create_order():
+    create_order_service()
+    return jsonify({'id': 1}), 201
+""",
+        encoding="utf-8",
+    )
+    (src / "services.py").write_text(
+        """from models import Order
+def create_order_service():
+    Order.query.all()
+""",
+        encoding="utf-8",
+    )
+    (src / "models.py").write_text(
+        """class Order(Base):
+    pass
+""",
+        encoding="utf-8",
+    )
+
+    conn_map = generate_feature_connection_map(tmp_path)
+    db_nodes = [n for n in conn_map["nodes"] if n["layer"] == "database"]
+    assert len(db_nodes) >= 1
+    assert any("Order" in n["name"] for n in db_nodes)
+
+
+# ==============================================================================
+# Scenario 15: Response Serialization & Unconsumed Client Response Detection
+# ==============================================================================
+def test_scenario_15_unconsumed_response_detection(tmp_path: Path):
+    """Backend route sends JSON payload, but frontend client drops/ignores the response."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "app.py").write_text(
+        """from flask import Flask, jsonify
+app = Flask(__name__)
+
+@app.route('/api/metrics', methods=['GET'])
+def get_metrics():
+    return jsonify({'cpu_load': 0.45, 'active_threads': 12})
+""",
+        encoding="utf-8",
+    )
+    (src / "client.js").write_text(
+        """function checkHealth() {
+    fetch('/api/metrics');
+}
+""",
+        encoding="utf-8",
+    )
+
+    conn_map = generate_feature_connection_map(tmp_path)
+    findings = [f for f in conn_map["contract_findings"] if f["category"] == "unconsumed_response"]
+    assert len(findings) >= 1
+    assert "/api/metrics" in findings[0]["feature_or_route"]
+
+
+# ==============================================================================
+# Scenario 16: UI Named Callback Event Handler Tracing
+# ==============================================================================
+def test_scenario_16_ui_named_callback_tracing(tmp_path: Path):
+    """UI element onClick={submitForm} resolves to named client function calling endpoint."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "Checkout.jsx").write_text(
+        """export function CheckoutPage() {
+    function submitCheckout() {
+        fetch('/api/checkout', { method: 'POST' });
+    }
+    return <button onClick={submitCheckout}>Submit Order</button>;
+}
+""",
+        encoding="utf-8",
+    )
+
+    conn_map = generate_feature_connection_map(tmp_path)
+    cb_edges = [e for e in conn_map["edges"] if e["link_type"] == "named_callback"]
+    assert len(cb_edges) >= 1
+    assert cb_edges[0]["status"] == "CONNECTED"
+
+
+# ==============================================================================
+# Scenario 17: Global Middleware-Based Authorization Recognition
+# ==============================================================================
+def test_scenario_17_global_middleware_auth_recognition(tmp_path: Path):
+    """Sensitive route without route-level decorator does NOT trigger false missing_auth if global auth exists."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "app.py").write_text(
+        """from flask import Flask, request, abort
+app = Flask(__name__)
+
+@app.before_request
+def auth_middleware():
+    if not request.headers.get('Authorization'):
+        abort(401)
+
+@app.route('/api/admin/users', methods=['DELETE'])
+def delete_user():
+    return {'status': 'deleted'}
+""",
+        encoding="utf-8",
+    )
+
+    conn_map = generate_feature_connection_map(tmp_path)
+    auth_findings = [f for f in conn_map["contract_findings"] if f["category"] == "missing_auth"]
+    assert len(auth_findings) == 0
+
+
+# ==============================================================================
+# Scenario 18: Static Graph Never Implies Runtime PASS
+# ==============================================================================
+def test_scenario_18_static_graph_never_implies_runtime_pass(tmp_path: Path):
+    """Even if an 8-layer map is statically connected, live verification without server returns UNKNOWN, never PASS."""
+    journey = Journey(
+        feature="orders",
+        steps=[
+            {
+                "id": "order-check",
+                "checkpoint": "Order service responds",
+                "adapter": "http",
+                "expected_behavior": "GET /api/orders returns HTTP 200",
+                "settings": {"method": "GET", "url": "/api/orders", "checks": {"status_code": 200}},
+            }
+        ],
+    )
+    # Using dead port to ensure connection refusal
+    context = AdapterContext(tmp_path, HunterConfig(base_url="http://127.0.0.1:59999"))
+    adapter = HTTPAdapter()
+    result = adapter.verify(context, journey, journey.steps[0])
+
+    assert result.status == Status.UNKNOWN
+    assert result.status != Status.PASS
+    assert "could not be completed" in result.actual_observation
+
+
+# ==============================================================================
+# Scenario 19: Mermaid Diagram Structural Consistency Across 8 Layers
+# ==============================================================================
+def test_scenario_19_mermaid_diagram_consistency(tmp_path: Path):
+    """Mermaid diagram contains subgraphs for all discovered layers and valid nodes."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "app.py").write_text(
+        """from flask import Flask, jsonify
+app = Flask(__name__)
+@app.route('/api/health', methods=['GET'])
+def health():
+    return jsonify({'status': 'ok'}), 200
+""",
+        encoding="utf-8",
+    )
+
+    conn_map = generate_feature_connection_map(tmp_path)
+    mermaid = conn_map["mermaid"]
+
+    assert "graph LR" in mermaid
+    assert "subgraph" in mermaid
+    for node in conn_map["nodes"]:
+        assert node["id"] in mermaid
+
+
+# ==============================================================================
+# Scenario 20: Target Feature Filtering Precision
+# ==============================================================================
+def test_scenario_20_target_feature_filtering_precision(tmp_path: Path):
+    """Target feature filtering isolates targeted routes and suppresses unrelated endpoints."""
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "app.py").write_text(
+        """from flask import Flask, jsonify
+app = Flask(__name__)
+
+@app.route('/api/billing/invoice', methods=['GET'])
+def get_invoice():
+    return jsonify({'total': 100})
+
+@app.route('/api/users/profile', methods=['GET'])
+def get_profile():
+    return jsonify({'user': 'alice'})
+""",
+        encoding="utf-8",
+    )
+
+    filtered_map = generate_feature_connection_map(tmp_path, target_feature="billing")
+    route_paths = [n["details"].get("path") for n in filtered_map["nodes"] if n["layer"] == "route"]
+
+    assert "/api/billing/invoice" in route_paths
+    assert "/api/users/profile" not in route_paths
+

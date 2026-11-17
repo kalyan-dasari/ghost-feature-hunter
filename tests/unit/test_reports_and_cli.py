@@ -77,8 +77,33 @@ def test_init_creates_config_and_sample_journey_without_overwrite(tmp_path):
 def test_cli_help_documents_expected_commands():
     result = CliRunner().invoke(app, ["--help"])
     assert result.exit_code == 0
-    for command in ("init", "discover", "audit", "report"):
+    for command in ("init", "discover", "audit", "report", "review", "map", "plan", "audit-routes", "audit-repo"):
         assert command in result.output
+
+
+def test_plan_command_generates_valid_journey(tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "app.py").write_text(
+        """from flask import Flask, jsonify
+app = Flask(__name__)
+@app.route('/api/checkout', methods=['POST'])
+def checkout():
+    return jsonify({'id': 1}), 201
+""",
+        encoding="utf-8",
+    )
+    runner = CliRunner()
+    res = runner.invoke(app, ["plan", "checkout", "-p", str(tmp_path)])
+    assert res.exit_code == 0
+    assert "Generated journey for feature 'checkout'" in res.output
+    journey_file = tmp_path / "journeys" / "checkout.json"
+    assert journey_file.exists()
+    content = json.loads(journey_file.read_text(encoding="utf-8"))
+    assert content["feature"] == "checkout"
+    assert len(content["steps"]) >= 1
+    assert content["steps"][0]["adapter"] == "http"
+    assert content["steps"][0]["settings"]["method"] == "POST"
 
 
 def test_evidence_item_accepts_timestamp_default():
