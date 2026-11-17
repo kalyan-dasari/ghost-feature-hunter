@@ -188,11 +188,20 @@ ghost-hunter init --project-root .
 # Advisory static discovery
 ghost-hunter discover --project-root .
 
+# 8-layer feature connection map and cross-layer contract verification
+ghost-hunter map [feature] --project-root . [--mermaid] [--json]
+
+# Plan an explicit verification journey from static analysis
+ghost-hunter plan <feature> --project-root . [--output OUTPUT]
+
 # Comprehensive multi-language repository & ghost feature audit
 ghost-hunter audit-repo --project-root .
 
 # Static route connection and hygiene audit
 ghost-hunter audit-routes --project-root .
+
+# Review code changes and call graph for wiring defects
+ghost-hunter review [target]
 
 # Execute verification journey
 ghost-hunter audit <feature> --project-root .

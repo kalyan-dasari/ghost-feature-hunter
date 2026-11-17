@@ -55,9 +55,39 @@ Each adapter implements the `BaseAdapter` interface:
 
 ---
 
----
+## 3. The 8-Layer Feature Connection Engine
 
-## 4. Repository Audit Architecture & Scope Lock
+Ghost Hunt's signature capability is tracing features across the application's full 8-layer vertical stack:
+
+```mermaid
+flowchart LR
+    L1["1. UI Action"] --> L2["2. Client API"]
+    L2 --> L3["3. Backend Route"]
+    L3 --> L4["4. Controller / Handler"]
+    L4 --> L5["5. Business Service"]
+    L5 --> L6["6. Database / Model"]
+    L4 --> L7["7. Response / UI State"]
+    L3 -.-> L8["8. Tests & Verification"]
+```
+
+### The 8 Architectural Layers:
+1. **Layer 1: UI Action:** Interactive user elements (`<button>`, `<a href>`, `<form>`, `<input>`, components) triggering intent. Captures inline handlers (`onClick={() => ...}`) and named callbacks (`onClick={handleCheckout}`).
+2. **Layer 2: Client API:** Asynchronous client calls (`fetch`, `axios.get/post`, `<form action>`) with method, URL path, parameters, and calling function attribution.
+3. **Layer 3: Backend Route:** Framework route definitions (`@app.route`, `@router.get`, `app.post`) declaring accepted paths, HTTP methods, and sensitivity level.
+4. **Layer 4: Controller / Handler:** Backend handler function executing entry logic. Evaluated for placeholder stubs, authentication checks, and delegated calls.
+5. **Layer 5: Business Service:** Application service layer (`OrderService`, `PaymentProcessor`, `InventoryManager`) performing domain calculations, validations, and orchestration.
+6. **Layer 6: Database / Model:** Data persistence layer (ORM models, SQLite/PostgreSQL tables, transactions). Evaluates query patterns and enforces atomic transaction wrappers across multiple write mutations.
+7. **Layer 7: Response / UI State:** Returned HTTP status codes (200, 201, 400, 500) and payload serialization formats (JSON, template, redirect). Verifies whether client caller actually consumes the payload (`unconsumed_response` check).
+8. **Layer 8: Tests & Verification:** Unit, integration, and journey test assertions covering the route. Discards passive mentions (`passive_test_assertion`), requiring active response code or body assertions (`test_assertion_candidate`).
+
+### Cross-Layer Contract Checks:
+- **Monorepo Boundary Isolation:** Client calls in App A cannot target endpoints in App B without an explicit gateway.
+- **HTTP Method Compatibility:** Prevents HTTP 405 Method Not Allowed by verifying frontend request verbs against backend route method declarations.
+- **Service Existence & Completeness:** Identifies calls to missing services (`missing_service`) or incomplete stubs (`unfinished_service`).
+- **Atomic Transactions:** Flags multiple database mutations executed without atomic transaction blocks (`transaction_boundary`).
+- **Response Consumption:** Flags backend JSON endpoints whose response data is completely ignored by frontend callbacks.
+
+---
 
 Ghost Hunt includes a static audit architecture designed to analyze an entire repository without running untrusted code:
 
