@@ -1,32 +1,63 @@
 # Ghost Hunt (`ghost-hunt`)
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Agent Skills](https://img.shields.io/badge/Agent_Skills-Open_Standard-green.svg)](https://skills.sh/)
+[![Tests](https://img.shields.io/badge/tests-176%20passed-success.svg)]()
+
 > **DON'T TRUST THE FEATURE. VERIFY IT.**
 
-**Ghost Hunt** is an open-source Agent Skill that helps AI coding agents investigate software features, trace end-to-end data flow, run safe verification checks, identify confirmed defects, explain root causes, and verify fixes using evidence.
+**Ghost Hunt** is an open-source, reusable codebase investigator and feature verification toolkit for AI coding agents. It helps agents and developers determine whether software features are **genuinely implemented, properly connected, functional, and verifiable** across the application's full execution path.
 
 ---
 
-## 💡 Why Ghost Hunt?
+## 💡 The Problem Ghost Hunt Solves
 
-AI coding agents are remarkably good at generating code that *looks* correct. However, code that looks plausible often fails in production due to broken data flow, missing validations, silent transaction rollbacks, or mismatched assumptions between frontend, backend, and database.
+AI coding agents are remarkably skilled at writing code that *looks* syntactically correct. However, plausible-looking code frequently breaks in production due to subtle, cross-boundary defects:
 
-When asked to test a feature, coding agents often default to superficial code reviews, or write unit tests that encode the same flawed assumptions as the implementation.
+- **Disconnected Endpoints:** Frontend calls `/api/v1/orders`, but backend routes register `/api/orders`.
+- **HTTP Method Mismatches:** Frontend dispatches a `POST` request to an endpoint that only accepts `GET`, triggering silent HTTP 405 errors.
+- **Unfinished Stubs:** Service functions contain `pass`, `...`, or `raise NotImplementedError`.
+- **Phantom Persistence:** Endpoints return HTTP 201 Created without executing a database `INSERT`.
+- **Unprotected Mutations:** Controllers execute multiple database writes without an atomic transaction boundary, risking corrupted data on failure.
+- **Unconsumed Responses:** Backend returns JSON payloads that the frontend client completely drops.
+- **Passive Testing Gaps:** Test cases merely mention route strings without asserting response status codes or payload values.
 
-**Ghost Hunt gives your agent an empirical verification discipline.** It teaches your coding agent to:
-1. Map full-stack data flow across routes, controllers, services, database models, and UI templates.
-2. Formulate discrete, testable checkpoints anchored to explicit requirement sources.
-3. Execute real, safe runtime checks using its native tools.
-4. Classify observations under a strict truth table (**`PASS`**, **`FAIL`**, **`UNKNOWN`**).
-5. Isolate confirmed defects to exact source lines and explain root causes.
-6. Propose surgical, minimal fixes for user approval and verify them against regressions.
+Ghost Hunt replaces superficial code inspections with an **empirical verification discipline**.
 
 ---
 
-## 🤖 Supported Coding Agents
+## 🔗 The 8-Layer Feature Connection Engine
 
-Ghost Hunt is designed around the open [Agent Skills specification](https://skills.sh/) and works with leading AI coding agents:
+Ghost Hunt traces software features across all 8 architectural tiers:
 
-| Agent | Invocation Syntax | Project Installation Directory |
+```mermaid
+flowchart LR
+    L1["1. UI Action"] --> L2["2. Client API"]
+    L2 --> L3["3. Backend Route"]
+    L3 --> L4["4. Controller / Handler"]
+    L4 --> L5["5. Business Service"]
+    L5 --> L6["6. Database / Model"]
+    L4 --> L7["7. Response / UI State"]
+    L3 -.-> L8["8. Tests & Verification"]
+```
+
+1. **UI Action:** Interactive elements (`<button>`, `<a>`, `<form>`, inputs) triggering user intent.
+2. **Client API:** Network dispatch (`fetch`, `axios`, `<form action>`) with HTTP verbs, URLs, and caller function tracking.
+3. **Backend Route:** Web framework route declarations (`@app.route`, Express, FastAPI, Spring Boot, ASP.NET Core).
+4. **Controller / Handler:** Entry handler function, authentication checks, and stub detection.
+5. **Business Service:** Application service layer (`OrderService`, `PaymentProcessor`) and business logic.
+6. **Database / Model:** ORM models, SQL queries, mutation counts, and atomic transaction wrappers.
+7. **Response / UI State:** HTTP status codes, payload serialization, and client response consumption verification.
+8. **Tests & Verification:** Verifiable test assertions (`assert res.status_code == 200`) vs passive mentions.
+
+---
+
+## 🤖 Supported AI Coding Agents
+
+Ghost Hunt is built to the open [Agent Skills specification](https://skills.sh/) and works out of the box with leading AI coding agents:
+
+| Agent | Invocation Syntax | Installation Directory |
 |---|---|---|
 | **Google Antigravity** | `/ghost-hunt` or `/ghost-hunt investigate <feature>` | `<project-root>/.agents/skills/ghost-hunt/` |
 | **Anthropic Claude Code** | `/ghost-hunt` or `/ghost-hunt investigate <feature>` | `<project-root>/.claude/skills/ghost-hunt/` |
@@ -34,126 +65,127 @@ Ghost Hunt is designed around the open [Agent Skills specification](https://skil
 
 ---
 
-## ⚡ Quick Install
+## ⚡ Quick Installation
 
-Install the canonical Agent Skill directly into your workspace with one command using the official Skills CLI (requires **Node.js 22.20.0+**):
+### Option 1: Install the Agent Skill (Recommended)
+Install the canonical skill directly into your workspace with one command using the Skills CLI (requires **Node.js 22.20.0+**):
 
-```console
+```bash
+# Interactive agent prompt:
 npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt
-```
 
-The CLI will prompt you to choose your agent. You can also specify your target agent directly:
-
-```console
-# Google Antigravity
+# Or install directly for your agent:
 npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt -y --copy --agent antigravity
-
-# Anthropic Claude Code
 npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt -y --copy --agent claude-code
-
-# OpenAI Codex
 npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt -y --copy --agent codex
 ```
 
-### Manual Installation
-If you prefer not to use `npx`, copy the canonical [`skills/ghost-hunt/`](skills/ghost-hunt/) directory into your project:
-- **Google Antigravity:** `.agents/skills/ghost-hunt/`
-- **Anthropic Claude Code:** `.claude/skills/ghost-hunt/`
-- **OpenAI Codex:** `.agents/skills/ghost-hunt/`
+### Option 2: Install the Optional Python CLI
+For deterministic CI/CD pipelines, scripted automation, and standalone terminal audits:
 
-Keep `SKILL.md`, `references/`, `templates/`, and `examples/` together in the directory.
-
----
-
-## 🚀 How to Invoke in Chat
-
-Once installed, open your coding agent in your project workspace and invoke Ghost Hunt using one of its five modes:
-
-| Mode | Command | What It Does |
-|---|---|---|
-| **Feature Discovery** | `/ghost-hunt discover` | Statically inspects the project, detects frameworks, maps route architecture, and presents available features without executing code. |
-| **Feature Investigation** | `/ghost-hunt investigate <feature>` | Performs deep, end-to-end data flow tracing and active verification of a specific feature across frontend, API, services, and database. |
-| **Repository Audit** | `/ghost-hunt audit` | Performs a whole-repository static audit: maps route connections, detects missing route candidates, identifies potentially unused endpoints, flags duplicate code, and discovers testing gaps. |
-| **Code Change Review** | `/ghost-hunt review [target]` | Reviews uncommitted, staged, or branch changes and surrounding call graph for broken wiring, missing validation, security risks, and test gaps. |
-| **Verification & Fix** | `/ghost-hunt verify <feature>` | Runs targeted regression checks for a previously identified defect, reviews proposed surgical fixes, and verifies fix efficacy. |
-
-*(Codex users: use `$ghost-hunt` prefix).*
-
-### Bare Invocation Safety Guard
-If you invoke `/ghost-hunt investigate` without specifying a feature target:
-1. Ghost Hunt locks scope to your **actual active project** (reading `git rev-parse --show-toplevel`, project manifests, and package names).
-2. It explicitly ignores bundled example fixtures (such as `examples/`, `fixtures/`, `benchmarks/`).
-3. It presents a standardized **Project Context Summary**, performs lightweight discovery, and prompts you to select a feature to investigate. **It never arbitrarily picks a benchmark or demo application.**
-
-You can also ask in natural language:
-- *"Investigate my checkout feature and verify whether inventory deduction works."*
-- *"Audit the repository for disconnected routes, unused endpoints, and untested core logic."*
-- *"Verify user registration: check password hashing, email uniqueness, and 400 validation responses."*
-
----
-
-## 🌟 The Three Core Capabilities
-
-1. **Multi-Language Discovery & Scope Lock:** Understands project structure before selecting targets. Distinguishes monorepo workspaces and benchmark fixtures from primary application code. Declares transparent, honest capability levels across Python (`deep-static`), JavaScript/TypeScript (`structural`), Go (`structural`), Java (`structural`), C# (`structural`), PHP (`structural`), Ruby (`structural`), Rust (`structural`), Kotlin (`structural`), and foundation ecosystems (C/C++, Swift, SQL).
-2. **Individual Feature Investigation:** Traces cross-boundary data flow, isolates stateful test scenarios to prevent contamination, and validates expectations against authoritative requirement sources.
-3. **Ghost Feature Detection & Whole-Repository Audit:** Constructs a feature connection graph across 8 architectural layers to unmask disconnected features, missing routes, method mismatches, empty implementations, orphaned services, and structural code duplication.
-
----
-
-## 🔍 Clear Finding Classifications
-
-Ghost Hunt clearly distinguishes between different classes of findings so developers can act with confidence:
-
-| Finding Category | Meaning | Confidence | Required Action |
-|---|---|---|---|
-| **Confirmed Defect (`FAIL`)** | Real runtime check failed against an authoritative requirement. | High / Evidence-backed | Propose surgical fix diff with line references. |
-| **Ghost Feature Candidate** | Feature appears in one layer (UI, link, button, route) but has a missing, disconnected, or incomplete implementation path. | High / Medium | Complete the broken link in the feature chain or remove dead interface elements. |
-| **Empty / Unfinished Candidate** | Function, route handler, or button has only `pass`, `...`, `NotImplementedError`, or `onClick={() => {}}` (excluding abstract methods/interfaces). | High / Medium | Complete implementation or document intentional stub behavior. |
-| **Missing Route Candidate** | Frontend or client code calls an endpoint (`fetch`, `axios`) that has no matching backend route. | Medium / Static Candidate | Confirm whether route is handled externally or missing. |
-| **Method / Path Mismatch** | Client requests an endpoint with an HTTP method (e.g. `POST`) not accepted by the backend route (e.g. `GET`). | High / Static Candidate | Align allowed route methods or update client request. |
-| **Potentially Unused Route / Dep** | Backend route or package declared but no references found in codebase. | Low / Heuristic Candidate | Verify against external webhooks, mobile clients, and dynamic dispatch before removal (`Requires Owner Confirmation`). |
-| **Structural Duplicate Code** | Functions with different or identical names sharing identical normalized syntax bodies. | High / Measurable | Unify duplicate logic and eliminate redundant maintenance lines. |
-| **Testing Gap** | Critical business logic or mutation route has zero test coverage in the existing test suite. | High / Measurable | Author targeted regression tests. |
-| **Inferred Assumption** | Expected behavior deduced from code patterns or naming rather than explicit specs. | Unconfirmed Hypothesis | **Evaluates to UNKNOWN, never PASS or FAIL.** Must be confirmed by project owner. |
-
----
-
-## 🛠️ Dual Execution Modes
-
-Ghost Hunt separates the universal Agent Skill from the optional Python engine:
-
-| Mode | Prerequisites | When to Use | Capabilities |
-|---|---|---|---|
-| **Native Agent Tools (Default)** | **None.** Works in any repo immediately. | Interactive chat, ad-hoc feature debugging, rapid exploration. | The agent uses its built-in file search, terminal commands (`curl`, test runners, Python/Node scripts), and browser tools. |
-| **Deterministic CLI Engine (Optional)** | Python 3.11+ (`pip install "ghost-feature-hunter[all]"`) | CI/CD automated gates, reproducible JSON audit artifacts. | Executes hermetic JSON journeys via `ghost-hunter audit <feature>` with schema validation, path containment, and automated report rendering. |
-
-*Crucial Rule:* Never claim a tool was executed if it was not available. Missing tools or unreachable services always produce **`UNKNOWN`**.
-
----
-
-## 🧭 The 11-Step Investigation Protocol
-
-When invoked, Ghost Hunt executes this disciplined verification workflow:
-
-```text
-1. Feature Scope ──> 2. Static Discovery ──> 3. Flow Tracing ──> 4. Requirements
-                                                                         │
-7. Defect Isolation <── 6. Safe Execution <── 5. Journey Checkpoints <───┘
-│
-└──> 8. Root Cause ──> 9. Minimal Fix ──> 10. Regression ──> 11. Evidence Report
+```bash
+pip install "ghost-feature-hunter[all]"
 ```
 
-1. **Feature Scope:** Parse user intent, personas, and entry points.
-2. **Static Discovery:** Statically inspect routes, controllers, DB models, templates, and existing tests without running untrusted code.
-3. **Flow Tracing:** Trace data flow: UI -> API endpoint -> controller -> service logic -> database -> response.
-4. **Requirement Analysis:** Anchor expectations to explicit sources (`user_requirement`, `product_documentation`, `api_contract`, `existing_test`). Hypotheses are flagged as `inferred_assumption` and require user confirmation.
-5. **Journey Checkpoints:** Structure discrete checkpoints covering happy path, auth, persistence, and error paths.
-6. **Safe Execution:** Run safe checks using `curl`, test commands, read-only DB queries, and browser tools.
-7. **Defect Isolation:** Record discrepancies as confirmed defects (**`FAIL`**).
-8. **Root Cause Analysis:** Trace backward to exact source files and line ranges (`path/to/file.py:L42-L55`).
-9. **Minimal Fix Proposal:** Present the smallest surgical patch for user approval. **Never modify code without authorization.**
-10. **Regression Verification:** Re-verify failing checkpoints and adjacent test suites after fix approval.
-11. **Evidence-Backed Report:** Output a structured Markdown report with pass/fail breakdown and evidence references.
+---
+
+## 🧭 Invocations & Commands: Skill vs CLI
+
+Ghost Hunt cleanly distinguishes between conversational **Agent Skill modes** and deterministic **Python CLI commands**:
+
+### Conversational Agent Skill Modes (In Chat)
+| Mode | Invocation | Purpose |
+|---|---|---|
+| **Project Discovery** | `/ghost-hunt discover` | Statically inspects the project, detects frameworks, maps route architecture, and presents available features without executing code. |
+| **Feature Investigation** | `/ghost-hunt investigate <feature>` | End-to-end multi-tier investigation and safe active verification of a specific feature. |
+| **Repository-Wide Audit** | `/ghost-hunt audit` | Whole-repository audit for ghost features, empty implementations, route mismatches, unused code, and duplication. |
+| **Code Change Review** | `/ghost-hunt review [target]` | Reviews uncommitted, staged, or branch changes and surrounding call graph for wiring defects, security risks, and test gaps. |
+| **Post-Fix Verification** | `/ghost-hunt verify <feature>` | Re-verifies approved code fixes and runs regression checks against test suites. |
+
+### Deterministic Python CLI Commands (In Terminal)
+| Command | Usage | Description |
+|---|---|---|
+| `ghost-hunter init` | `ghost-hunter init [-p ROOT]` | Creates conservative project configuration and a sample journey. |
+| `ghost-hunter discover` | `ghost-hunter discover [-p ROOT]` | Statically catalogs routes, client calls, models, tests, and multi-language capabilities. |
+| `ghost-hunter map` | `ghost-hunter map [FEATURE] [--mermaid] [--json]` | Generates the 8-layer Feature Connection Map and detects cross-layer contract issues. |
+| `ghost-hunter plan` | `ghost-hunter plan <FEATURE> [-o OUTPUT]` | Plans an explicit JSON verification journey from connection map analysis. |
+| `ghost-hunter audit` | `ghost-hunter audit <FEATURE> [--allow-writes]` | Executes a developer-defined JSON journey against live endpoints with evidence logging. |
+| `ghost-hunter audit-routes` | `ghost-hunter audit-routes [-p ROOT]` | Statically audits route connections between backend handlers and frontend callers. |
+| `ghost-hunter audit-repo` | `ghost-hunter audit-repo [-p ROOT]` | Runs comprehensive multi-language repository audit with ghost feature detection. |
+| `ghost-hunter review` | `ghost-hunter review [TARGET]` | Reviews code changes and call graph for wiring defects, security risks, and test gaps. |
+| `ghost-hunter report` | `ghost-hunter report <REPORT_JSON>` | Renders structured Markdown from a previously generated JSON report. |
+
+---
+
+## 🔍 Working Demonstration: Broken Flask Shop
+
+Ghost Hunt includes a benchmark fixture (`examples/broken-flask-shop`) containing 15 deliberately injected defects. Here is the output of the Feature Connection Map running against the checkout feature:
+
+```console
+$ ghost-hunter map checkout -p examples/broken-flask-shop
+
+Feature Connection Map for 'broken-flask-shop':
+- Nodes: 6
+- Edges: 5
+- Broken Edges: 1
+- Missing Edges: 1
+- Orphaned Nodes: 0
+- Contract Findings: 1
+
+Feature Connection Pipeline:
+UI Action ===> Client API ===> Route Handler ===> Controller ===> Service ===> Database ===> Response ===> Tests
+-----------------------------------------------------------------------------------------------------------------
+  [OK] POST /api/checkout --> def checkout()
+  [BROKEN] GET /api/checkout -X- POST /api/checkout (HTTP Method mismatch: client calls GET, but route only accepts ['POST'])
+  [OK] def checkout() --> DB Operations (0 writes, 1 reads)
+  [OK] def checkout() --> Response: HTTP 201 (JSON)
+  [MISSING] POST /api/checkout -X- MISSING: Test Coverage for /api/checkout (Testing gap: route lacks unit or integration test coverage)
+
+Cross-Layer Contract Findings:
+  [High] method_mismatch: HTTP method mismatch: Client sends GET, backend only supports ['POST']
+    Evidence: static/shop.js:7 (GET) vs app.py:140 (['POST'])
+    Fix: Add 'GET' to route handler methods or update client request.
+```
+
+Generating the visual Mermaid flowchart:
+
+```console
+$ ghost-hunter map checkout -p examples/broken-flask-shop --mermaid
+```
+
+```mermaid
+graph LR
+    %% Ghost Hunt 8-Layer Feature Connection Map
+    subgraph CLIENT_API ["2. Client API"]
+        client_call_1["GET /api/checkout"]
+    end
+    subgraph ROUTE ["3. Backend Route"]
+        route_8["POST /api/checkout"]
+    end
+    subgraph CONTROLLER ["4. Controller / Handler"]
+        ctrl_8_checkout["def checkout()"]
+    end
+    subgraph DATABASE ["6. Database / Model"]
+        db_route_8["DB Operations (0 writes, 1 reads)"]
+    end
+    subgraph RESPONSE ["7. Response / UI State"]
+        resp_route_8["Response: HTTP 201 (JSON)"]
+    end
+    subgraph TEST ["8. Tests & Verification"]
+        test_route_8["MISSING: Test Coverage for /api/checkout"]
+    end
+    route_8 -->|Connected| ctrl_8_checkout
+    client_call_1 -.->|BROKEN: HTTP Method mismatch: client calls GET, but route only accepts ('POST')| route_8
+    ctrl_8_checkout -->|Connected| db_route_8
+    ctrl_8_checkout -->|Connected| resp_route_8
+    route_8 -.->|MISSING LINK| test_route_8
+    style client_call_1 fill:#e8f8f5,stroke:#2ecc71,stroke-width:1px
+    style route_8 fill:#e8f8f5,stroke:#2ecc71,stroke-width:1px
+    style ctrl_8_checkout fill:#e8f8f5,stroke:#2ecc71,stroke-width:1px
+    style db_route_8 fill:#e8f8f5,stroke:#2ecc71,stroke-width:1px
+    style resp_route_8 fill:#e8f8f5,stroke:#2ecc71,stroke-width:1px
+    style test_route_8 fill:#ffeaa7,stroke:#d63031,stroke-width:2px,stroke-dasharray: 5 5
+```
 
 ---
 
@@ -163,183 +195,81 @@ Ghost Hunt classifies every verification checkpoint into exactly one of three st
 
 | Status | Exact Definition | Permissible Interpretation |
 |---|---|---|
-| **`PASS`** | A check ran and its observed result matched the explicit expectation. | Proves **only** the executed assertion. Never infer unasserted behavior. |
+| **`PASS`** | A check ran and its observed result affirmatively matched an authoritative requirement. | Proves **only** the executed assertion. Never infer unasserted behavior. |
 | **`FAIL`** | An executed check directly contradicted an explicit expected behavior. | Proves the feature broke at this specific checkpoint. |
-| **`UNKNOWN`** | Prerequisites, runtimes, permissions, or evidence were unavailable. | **Never relabel as PASS or FAIL.** Indicates an unverified check. |
+| **`UNKNOWN`** | Prerequisites, runtimes, clean databases, permissions, or evidence were unavailable. | **Never relabel as PASS or FAIL.** Indicates an unverified check requiring investigation. |
 
 ---
 
-## 📊 Example Evidence-Backed Result
+## 🛡️ Operational Safety Tiers
 
-Every Ghost Hunt report begins with a mandatory **Project Context Summary** locking the target scope, followed by checkpoint findings and isolated defects:
-
-```markdown
-# Ghost Hunt: Feature Audit Report
-
-### Project Context Summary
-| Property | Value |
-|---|---|
-| **Detected Project Name** | `broken-flask-shop` |
-| **Project Root** | `examples/broken-flask-shop` |
-| **Git Root** | `/workspace/ghost-feature-hunter` |
-| **Application Type** | `Flask (Python)` |
-| **Investigation Target** | `checkout` (`/api/checkout`, `POST`) |
-| **Target Classification** | `Benchmark / Example Application` |
-
----
-
-### Verification Summary
-- **Feature:** checkout
-- **Status:** FAIL (3 confirmed defects isolated)
-- **Checkpoints:** 5 Total | 2 PASS | 3 FAIL | 0 UNKNOWN
-
-### Checkpoint Breakdown
-| Checkpoint | Expected | Observed | Status | Source | Evidence |
-|---|---|---|---|---|---|
-| `cart-tax` | `total_cents: 1100` | `total_cents: 1200` | FAIL | `api_contract` | HTTP 200 response |
-| `idempotency` | HTTP 201 on first, 409 on replay | HTTP 201, then HTTP 409 | PASS | `product_documentation` | HTTP responses |
-| `quantity-val` | HTTP 400 on negative qty | HTTP 201 Created (ord-883) | FAIL | `product_documentation` | HTTP 201 response |
-| `persistence` | 1 confirmed row in SQLite | 1 row, state='confirmed' | PASS | `api_contract` | sqlite3 query |
-| `inventory-qty`| Stock decremented by 2 (10 -> 8) | Stock decremented by 1 (10 -> 9) | FAIL | `product_documentation` | sqlite3 before/after delta |
-
-### Confirmed Defect: Inadequate Inventory Deduction (`inventory-qty`)
-- **Location:** `app.py:L180-L184`
-- **Root Cause:** The SQL update unconditionally decrements stock by 1 unit (`stock = MAX(stock - 1, 0)`) instead of subtracting the cart item's actual requested quantity.
-- **Recommended Minimal Fix:**
-  ```diff
-  - UPDATE products SET stock = MAX(stock - 1, 0) WHERE id = ?
-  + UPDATE products SET stock = MAX(stock - ?, 0) WHERE id = ?
-  ```
-```
-
-👉 **[Read the Full Checkout Investigation Walkthrough](skills/ghost-hunt/examples/checkout-investigation.md)**
-
----
-
-## 🔒 Stateful Scenario Isolation & False PASS Prevention
-
-Testing stateful workflows (e.g., checkout, order processing, inventory decrement) introduces a critical failure mode: **test state contamination**.
-
-If test steps run sequentially against the same database, mutations from earlier checks can contaminate the initial state of subsequent checks. In a naive test run, an earlier negative-quantity check unexpectedly decremented stock from 10 to 9. A subsequent check requesting 2 units then reduced stock from 9 to 8. A naive assertion checking only `stock == 8` evaluated to `PASS`—falsely masking that purchasing 2 units had only decremented 1 unit!
-
-Ghost Hunt eliminates false PASS results through four isolation rules:
-1. **Fresh Disposable State:** Every stateful scenario starts with a freshly seeded database copy or transaction rollback.
-2. **Explicit Baseline Measurement:** The agent measures the baseline state *before* execution (e.g., `initial_stock = 10`), executes the action (quantity = 2), and measures the delta *after* execution (`final_stock = 9`).
-3. **Delta Assertions:** Assertions verify the exact transition (`final == initial - quantity`), never just the ending absolute value.
-4. **PASS Evidence Contract:** `PASS` requires verifiable before/after data proving the expected transition occurred. Missing baseline evidence degrades the status to `UNKNOWN`.
-
----
-
-## 🛡️ Safety Defaults & Operational Tiers
-
-Ghost Hunt is designed to run safely inside existing codebases by enforcing four operational safety levels:
+Ghost Hunt strictly enforces four operational safety levels:
 
 | Tier | Category | Safety Policy | Permitted Actions |
 |---|---|---|---|
-| **Level 1** | **Source Inspection** | **Safe by default.** | Static file discovery, AST parsing, test file reading. Never imports or runs untrusted application code to discover structure. |
+| **Level 1** | **Source Inspection** | **Safe by default.** | Static file discovery, AST parsing, test reading. Never imports or executes untrusted code. |
 | **Level 2** | **Runtime Read-Only** | **Safe in test environments.** | Safe HTTP probes (`GET`, `HEAD`, `OPTIONS`) and read-only database queries (`SELECT` only, capped at 1,000 rows). |
-| **Level 3** | **Runtime Mutations** | **Requires user authorization.** | State-altering HTTP methods (`POST`, `PUT`, `PATCH`, `DELETE`) and browser form submissions. Must target disposable test environments with synthetic data. |
-| **Level 4** | **Database Writes** | **Strictly isolated.** | Direct database mutations (`INSERT`, `UPDATE`, `DELETE`). Strictly prohibited against production databases. Restricted to disposable temporary databases with cleanup and re-seeding. |
+| **Level 3** | **Runtime Mutations** | **Requires user authorization.** | State-altering HTTP methods (`POST`, `PUT`, `PATCH`, `DELETE`) and browser form submissions. Must target disposable test environments. |
+| **Level 4** | **Database Writes** | **Strictly isolated.** | Direct database mutations (`INSERT`, `UPDATE`, `DELETE`). Strictly prohibited against production databases. Restricted to disposable temporary databases. |
 
-### Absolute Guardrails:
-- **Production Guardrail:** All checks against production environments are blocked by default.
-- **Credential Redaction:** Passwords, API keys, Bearer tokens, and email addresses are automatically redacted from evidence logs.
-- **No Code Edits Without Approval:** Proposed fixes are always presented as diffs for user authorization before applying changes.
-
----
-
-## 🔧 Optional Deterministic Python CLI
-
-For automated CI/CD pipelines, regression test suites, and schema-validated JSON reports, the optional Python CLI is available:
-
-```bash
-# Install with all extras (Python 3.11+)
-pip install "ghost-feature-hunter[all]"
-
-# Initialize project configuration (creates ghost-hunter.json)
-ghost-hunter init --project-root .
-
-# Advisory static discovery
-ghost-hunter discover --project-root .
-
-# Comprehensive multi-language repository & ghost feature audit
-ghost-hunter audit-repo --project-root .
-
-# Static route connection and hygiene audit
-ghost-hunter audit-routes --project-root .
-
-# Execute verification journey
-ghost-hunter audit checkout --project-root .
-
-# Audit with write permissions for mutating endpoints
-ghost-hunter audit checkout --project-root . --allow-writes
-
-# Overwrite previous reports
-ghost-hunter audit checkout --project-root . --force
-```
-
-See [docs/installation.md](docs/installation.md) and [docs/safety.md](docs/safety.md) for CLI options and security configurations.
+### Built-in Safeguards:
+- **Production Guardrail:** All checks against production environments are blocked by default. Requires dual approval in config (`production_approved = true`) and CLI (`--approve-production`).
+- **Credential Redaction:** Automatically redacts Authorization headers, passwords, secrets, API tokens, and emails from all evidence items.
+- **No Unapproved Code Edits:** Always presents proposed fixes as minimal diffs for user approval before modifying code.
 
 ---
 
-## ⚠️ Prerequisites & Limitations
+## 🌐 Language & Framework Capability Matrix
 
-- **Agent Skill Prerequisites:** Installing via `npx skills add` requires **Node.js 22.20.0+**. Using the skill in chat requires no runtime dependencies; the agent uses its native tools.
-- **Optional CLI Prerequisites:** Requires **Python 3.11+**. Browser checks require Playwright and Chromium (`playwright install chromium`).
-- **Browser Automation:** Browser checks depend on the agent's available browser capabilities or headless Playwright. If unavailable in the host environment, checks are honestly reported as **`UNKNOWN`** with actionable diagnostics.
-- **Database Scope:** The optional CLI database adapter currently supports file-backed SQLite with C-level read-only query authorizers. Agents using native tools can inspect other databases using native CLI clients, following Level 2/4 safety rules.
-- **Honest Evidence:** Ghost Hunt never converts assumptions into facts or claims tests passed when tools were unavailable.
+Ghost Hunt declares transparent, honest capability levels across programming language ecosystems:
 
----
-
-## 🏷️ Version Mapping
-
-| Component | Current Version | Role |
+| Ecosystem | Declared Level | Analysis Capabilities |
 |---|---|---|
-| **Agent Skill (`ghost-hunt`)** | `0.3.0` | Canonical Agent Skill for AI coding agents |
-| **Python CLI Engine (`ghost-feature-hunter`)** | `0.2.0` | Optional deterministic verification engine and CI companion |
-| **Public Repository Release** | `v0.3.0` | GitHub project release tag |
+| **Python** | `deep-static` | Parser-backed AST. Route extraction (Flask, FastAPI, Django), ORM models, AST statement normalization, exception analysis, transaction boundaries. |
+| **JavaScript / TypeScript** | `structural` | AST-aware lexical scanning. Route extraction (Express, Next.js), client calls (`fetch`, `axios`), UI actions (JSX/TSX button onClick callbacks), components. |
+| **Go** | `structural` | Regex and structural token scanning for `net/http`, Gin, Chi, Fiber routes, struct models, and test functions. |
+| **Java / Kotlin** | `structural` | Spring Boot `@GetMapping`, `@PostMapping`, controller mapping, JPA `@Entity` models, and JUnit test blocks. |
+| **C# / .NET** | `structural` | ASP.NET Core controller attributes (`[HttpGet]`, `[Route]`), Minimal API calls, and Entity Framework model classes. |
+| **PHP / Ruby / Rust** | `structural` | Structural route matching across Laravel, Symfony, Rails, Sinatra, Actix, and Axum. |
+| **Swift / C / C++ / SQL** | `inventory-only` | File identification, line counts, and basic symbol inventory. |
 
 ---
 
-## 📂 Repository Structure
+## 📖 In-Depth Documentation
 
-```text
-ghost-feature-hunter/
-├── skills/ghost-hunt/               # Canonical Agent Skill (Agent Skills standard)
-│   ├── SKILL.md                     # Skill instructions for coding agents (<200 lines)
-│   ├── references/                  # Specialized workflow references (progressive disclosure)
-│   ├── templates/                   # Reusable report and journey templates
-│   └── examples/                    # Real-world investigation walkthroughs
-├── .agents/skills/ghost-hunt/       # Synchronized mirror for local agent execution
-├── src/ghost_hunter/                # Optional Python verification engine
-│   ├── adapters/                    # HTTP, SQLite, and isolated Playwright adapters
-│   ├── discovery/                   # Static AST discovery
-│   └── reporting/                   # JSON and Markdown report rendering
-├── examples/broken-flask-shop/      # 15-defect benchmark application
-├── integrations/                    # Platform integration guides (Antigravity, Claude, Codex)
-├── docs/                            # Architectural, safety, and installation documentation
-└── tests/                           # Unit, integration, and benchmark test suites
-```
+Explore detailed guides in the `docs/` directory:
+
+- [System Architecture](docs/architecture.md) — Dual execution model, adapter architecture, and scope lock.
+- [Feature Investigation Workflow](docs/feature-investigation-workflow.md) — The 11-step verification protocol.
+- [Feature Connection Map](docs/connection-map.md) — 8-layer graph tracing and contract verification.
+- [Verification & Evidence](docs/verification-and-evidence.md) — Truth table, PASS contract, and stateful isolation.
+- [Demonstration Walkthrough](docs/demo-walkthrough.md) — Step-by-step audit of `broken-flask-shop`.
+- [Benchmark Methodology](docs/benchmark-methodology.md) — Evaluation framework and scoring criteria.
+- [Limitations & Boundaries](docs/limitations.md) — Transparent disclosure of static analysis limits.
+- [Installation Guide](docs/installation.md) — Detailed setup for agents and CLI.
+- [Safety Guide](docs/safety.md) — Security guardrails, authorization levels, and credential redaction.
 
 ---
 
-## 🤝 Contributing & Community
+## 🤝 Contributing
 
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
+We welcome contributions from the community! Please read our [Contributing Guide](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md).
+
+To run the unit tests and benchmark suite:
 
 ```bash
-# Clone and install development dependencies
-git clone https://github.com/kalyan-dasari/ghost-feature-hunter.git
-cd ghost-feature-hunter
-python -m pip install -e ".[all]"
+# Run unit tests:
+pytest tests/unit/
 
-# Run test suite
-python -m pytest
+# Run adversarial regression suite (20 scenarios):
+pytest tests/unit/test_adversarial_fixtures.py
+
+# Run broken shop benchmark harness:
+pytest tests/benchmark/test_broken_shop_benchmark.py
 ```
 
 ---
 
-## License
+## 📄 License
 
-MIT © Ghost Feature Hunter contributors.
+Ghost Hunt is licensed under the [Apache License, Version 2.0](LICENSE).
