@@ -48,7 +48,7 @@ When invoked inside an AI coding agent (Antigravity, Claude Code, Codex), use na
 
 ### 2. Optional Companion Python CLI
 For deterministic CI/CD and scripted automation:
-- Run `ghost-hunter discover`, `ghost-hunter audit`, `ghost-hunter audit-repo`, `ghost-hunter review`.
+- Run `ghost-hunter discover`, `ghost-hunter map`, `ghost-hunter plan`, `ghost-hunter audit`, `ghost-hunter audit-repo`, `ghost-hunter review`.
 - Discloses its static capability levels honestly (`deep-static`, `structural`, `inventory-only`).
 
 ---

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- **8-Layer Feature Connection Engine:** End-to-end multi-tier pipeline tracing across `UI Action -> Client API -> Backend Route -> Controller -> Service -> Database -> Response -> Tests`.
+- **Cross-Layer Contract Verification:** Automated detection and isolation of cross-tier wiring defects:
+  - HTTP method mismatches (e.g., client sends `GET`, route accepts only `POST`).
+  - Unattached or empty UI event handlers (`onClick={() => {}}`).
+  - Missing business service calls and undefined functions.
+  - Unfinished service stubs (`raise NotImplementedError`, `TODO`).
+  - Transaction boundary risks (multiple database mutations executed without atomic transaction).
+  - Unconsumed response payloads (server returns JSON data dropped by frontend client).
+  - Passive test mentions (tests referencing routes without asserting response status or body).
+- **Automated Feature Journey Planning (`ghost-hunter plan`):** Generates valid, schema-compliant JSON journeys from static connection map analysis, tagging step expectations with verifiable sources (`api_contract`, `existing_test`, `inferred_assumption`).
+- **Interactive & Rendered Visualizations:** Generates both high-fidelity terminal ASCII diagrams and syntax-valid Mermaid flowcharts with distinct layer subgraphs and styling for connected, broken, missing, and unfinished nodes.
+- **Expanded 20-Scenario Adversarial Test Suite (`tests/unit/test_adversarial_fixtures.py`):** Comprehensive regression coverage for cross-application monorepo isolation, line attribution, SQL injection risk calibration, middleware auth recognition, and strict static vs runtime separation.
+- **Public Demonstration & Benchmarks:** Added `docs/demo-walkthrough.md` with real execution outputs on `broken-flask-shop` and `docs/benchmark-methodology.md`.
+
+---
+
 ## [0.3.0] - 2026-11-12
 
 ### Added
