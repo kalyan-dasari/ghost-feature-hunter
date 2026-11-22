@@ -65,26 +65,76 @@ Ghost Hunt is built to the open [Agent Skills specification](https://skills.sh/)
 
 ---
 
-## ⚡ Quick Installation
+## ⚡ Quick Installation & Multi-Project Setup
 
-### Option 1: Install the Agent Skill (Recommended)
-Install the canonical skill directly into your workspace with one command using the Skills CLI (requires **Node.js 22.20.0+**):
+### Option 1: Install the Agent Skill (Recommended for AI Coding Agents)
+
+> [!NOTE]
+> **Zero Python or external dependencies required!** The Agent Skill works natively using your AI coding agent's built-in file reading, terminal, and testing tools. You do **not** need Python installed, and you do **not** need to copy the Python engine (`src/`) into your other projects.
+
+#### Method A: Using the Skills CLI (One-Line Install)
+Install the canonical skill directly into any project workspace using the open Skills CLI (requires **Node.js 22.20.0+**):
 
 ```bash
-# Interactive agent prompt:
+# Interactive agent prompt (prompts to choose Antigravity, Claude Code, or Codex):
 npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt
 
 # Or install directly for your agent:
+# For Google Antigravity:
 npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt -y --copy --agent antigravity
+
+# For Anthropic Claude Code:
 npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt -y --copy --agent claude-code
+
+# For OpenAI Codex:
 npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt -y --copy --agent codex
 ```
 
-### Option 2: Install the Optional Python CLI
-For deterministic CI/CD pipelines, scripted automation, and standalone terminal audits:
+This places the skill folder directly into your project:
+```text
+your-project/
+├── .agents/skills/ghost-hunt/     <-- (or .claude/skills/ghost-hunt/)
+│   ├── SKILL.md
+│   ├── references/
+│   ├── templates/
+│   └── examples/
+├── src/                           <-- your project's code
+└── package.json (or go.mod, Cargo.toml, pyproject.toml)
+```
+
+#### Method B: Manual Copy (No npm/npx required)
+If you prefer not to use `npx`, simply copy the [`skills/ghost-hunt/`](skills/ghost-hunt/) folder into your project:
+- **Google Antigravity / OpenAI Codex:** `<your-project-root>/.agents/skills/ghost-hunt/`
+- **Anthropic Claude Code:** `<your-project-root>/.claude/skills/ghost-hunt/`
 
 ```bash
+# Example copy command:
+cp -r path/to/ghost-feature-hunter/skills/ghost-hunt my-project/.agents/skills/ghost-hunt
+```
+
+#### Method C: Global User Installation (Zero files in your projects!)
+To make `/ghost-hunt` available across **all repositories on your machine** without adding any files to individual projects, install the skill globally:
+
+```bash
+# Global install via Skills CLI:
+npx skills add kalyan-dasari/ghost-feature-hunter --skill ghost-hunt -g --copy --agent antigravity
+```
+Or manually place the `skills/ghost-hunt/` directory in your agent's global skills directory:
+- **Google Antigravity:** `~/.gemini/antigravity/builtin/skills/ghost-hunt/` or `~/.gemini/config/skills/ghost-hunt/`
+- **Anthropic Claude Code:** `~/.claude/skills/ghost-hunt/`
+- **OpenAI Codex:** `~/.agents/skills/ghost-hunt/`
+
+---
+
+### Option 2: Install the Optional Python CLI (`ghost-hunter`)
+For automated CI/CD quality gates, headless terminal audits, or generating JSON artifacts outside of an AI chat window:
+
+```bash
+# Install via pip:
 pip install "ghost-feature-hunter[all]"
+
+# Or install from local clone in editable mode:
+pip install -e "/path/to/ghost-feature-hunter[all]"
 ```
 
 ---
@@ -97,6 +147,7 @@ Ghost Hunt cleanly distinguishes between conversational **Agent Skill modes** an
 | Mode | Invocation | Purpose |
 |---|---|---|
 | **Project Discovery** | `/ghost-hunt discover` | Statically inspects the project, detects frameworks, maps route architecture, and presents available features without executing code. |
+| **8-Layer Connection Map** | `/ghost-hunt map [feature]` | Generates the 8-layer Feature Connection Map (UI $\rightarrow$ DB $\rightarrow$ Tests) and detects cross-layer contract defects. |
 | **Feature Investigation** | `/ghost-hunt investigate <feature>` | End-to-end multi-tier investigation and safe active verification of a specific feature. |
 | **Repository-Wide Audit** | `/ghost-hunt audit` | Whole-repository audit for ghost features, empty implementations, route mismatches, unused code, and duplication. |
 | **Code Change Review** | `/ghost-hunt review [target]` | Reviews uncommitted, staged, or branch changes and surrounding call graph for wiring defects, security risks, and test gaps. |
